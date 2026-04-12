@@ -9,12 +9,23 @@ if (!$imovel_id) {
     die("Erro: ID do imóvel não fornecido. <a href='../imoveis/list.php'>Voltar</a>");
 }
 
+// --- NOVA ROTINA DE EXCLUSÃO ---
+if (isset($_GET['delete_id'])) {
+    $delete_id = $_GET['delete_id'];
+    $stmt_del = $conn->prepare("DELETE FROM despesas WHERE id = ? AND imovel_id = ?");
+    if ($stmt_del->execute([$delete_id, $imovel_id])) {
+        header("Location: list.php?imovel_id=$imovel_id&msg=deleted");
+        exit;
+    }
+}
+// -------------------------------
+
 // Busca dados do imóvel para o cabeçalho
 $stmt_imovel = $conn->prepare("SELECT titulo FROM imoveis WHERE id = ?");
 $stmt_imovel->execute([$imovel_id]);
 $imovel = $stmt_imovel->fetch(PDO::FETCH_ASSOC);
 
-// Busca despesas (Colunas: tipo, valor, data_despesa, descricao)
+// Busca despesas
 $sql = "SELECT id, tipo, valor, data_despesa, descricao FROM despesas WHERE imovel_id = ? ORDER BY data_despesa DESC";
 $stmt = $conn->prepare($sql);
 $stmt->execute([$imovel_id]);
@@ -36,6 +47,13 @@ require_once '../../includes/header.php';
         </a>
     </div>
 
+    <?php if (isset($_GET['msg']) && $_GET['msg'] == 'deleted'): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            Despesa excluída com sucesso!
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
+
     <div class="card border-0 shadow-sm mb-4 bg-primary text-white">
         <div class="card-body p-3 text-center">
             <span class="small opacity-75 text-uppercase">Total de Gastos</span>
@@ -52,7 +70,7 @@ require_once '../../includes/header.php';
                     <div class="card border-0 shadow-sm border-start border-4 border-info">
                         <div class="card-body p-3">
                             <div class="d-flex justify-content-between align-items-start">
-                                <div style="max-width: 70%;">
+                                <div style="max-width: 60%;">
                                     <span class="badge bg-light text-dark border text-uppercase mb-1" style="font-size: 0.65rem;">
                                         <?= htmlspecialchars($d['tipo']) ?>
                                     </span>
@@ -61,9 +79,16 @@ require_once '../../includes/header.php';
                                 </div>
                                 <div class="text-end">
                                     <div class="fw-bold text-dark">R$ <?= number_format($d['valor'], 2, ',', '.') ?></div>
-                                    <a href="form_despesa.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-link text-warning p-0 mt-2">
-                                        <i class="bi bi-pencil-square fs-5"></i>
-                                    </a>
+                                    <div class="mt-2">
+                                        <a href="form_despesa.php?id=<?= $d['id'] ?>" class="btn btn-sm btn-link text-warning p-0 me-2">
+                                            <i class="bi bi-pencil-square fs-5"></i>
+                                        </a>
+                                        <a href="list.php?imovel_id=<?= $imovel_id ?>&delete_id=<?= $d['id'] ?>" 
+                                           class="btn btn-sm btn-link text-danger p-0"
+                                           onclick="return confirm('Tem certeza que deseja excluir esta despesa?')">
+                                            <i class="bi bi-trash fs-5"></i>
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </div>

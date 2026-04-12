@@ -54,7 +54,9 @@ if (!defined('BASE_URL')) {
                 <li class="nav-item">
                     <a class="nav-link" href="<?= BASE_URL ?>/pages/map/index.php">Mapa</a>
                 </li>
-
+                <li class="nav-item">
+                    <a class="nav-link" href="<?= BASE_URL ?>/pages/imoveis/imprimir_ficha.php" target="_blank">Ficha</a>
+                </li>
                 <li class="nav-item ms-lg-3">
                     <a class="btn btn-outline-light btn-sm d-flex align-items-center gap-2 px-3" 
                        href="<?= BASE_URL ?>/logout.php">
