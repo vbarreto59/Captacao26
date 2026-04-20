@@ -5,6 +5,21 @@ require_once '../../conn_cap.php';
 
 $id = isset($_GET['id']) && is_numeric($_GET['id']) ? (int)$_GET['id'] : null;
 
+// ==========================================
+// BUSCAR PRÓXIMO ID (AUTO_INCREMENT)
+// ==========================================
+$proximo_id_bruto = "?";
+$proximo_id_formatado = "?";
+try {
+    $stmt_status = $conn->query("SHOW TABLE STATUS LIKE 'leads'");
+    $status = $stmt_status->fetch(PDO::FETCH_ASSOC);
+    $proximo_id_bruto = $status['Auto_increment'];
+    // Formata o próximo ID com 3 dígitos para exibição no topo
+    $proximo_id_formatado = "L" . str_pad($proximo_id_bruto, 3, '0', STR_PAD_LEFT);
+} catch (Exception $e) {
+    // Fallback silencioso
+}
+
 // Dados padrão para inicializar o formulário
 $data = [
     'nome' => '', 
@@ -29,7 +44,6 @@ if ($id) {
     $res = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($res) {
         $data = $res;
-        // Busca IDs dos imóveis vinculados na tabela intermediária
         $stmt_im = $conn->prepare("SELECT imovel_id FROM lead_imoveis WHERE lead_id = ?");
         $stmt_im->execute([$id]);
         $imoveis_selecionados = $stmt_im->fetchAll(PDO::FETCH_COLUMN);
@@ -46,7 +60,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tipo_desejo = $_POST['tipo_desejo'] ?? 'Compra';
     $fase_funil  = $_POST['fase_funil'] ?? 'Novo';
     
-    // Converte valor formatado para decimal (ex: 1.500,00 -> 1500.00)
     $valor_bruto = $_POST['valor_max_formatado'] ?? '0';
     $valor_max   = (float)str_replace(['.', ','], ['', '.'], $valor_bruto);
     
@@ -81,12 +94,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tipo_desejo, $fase_funil, $valor_max, $quartos_min, 
                 $mobiliado, $localizacao
             ]);
+            
             $id = $conn->lastInsertId();
+
+            // REGRA: L + ID(3 dígitos) + "-" + Nome
+            $id_formatado = str_pad($id, 3, '0', STR_PAD_LEFT);
+            $nomeComID = "L" . $id_formatado . "-" . $nome;
+
+            $up_nome = $conn->prepare("UPDATE leads SET nome = ? WHERE id = ?");
+            $up_nome->execute([$nomeComID, $id]);
+            
+            $data['nome'] = $nomeComID; 
         }
 
-        // ATUALIZA VÍNCULOS (TABELA lead_imoveis)
+        // ATUALIZA VÍNCULOS
         $conn->prepare("DELETE FROM lead_imoveis WHERE lead_id = ?")->execute([$id]);
-        
         if (!empty($_POST['imoveis']) && is_array($_POST['imoveis'])) {
             $stmt_rel = $conn->prepare("INSERT INTO lead_imoveis (lead_id, imovel_id) VALUES (?, ?)");
             foreach ($_POST['imoveis'] as $im_id) {
@@ -108,9 +130,20 @@ require_once '../../includes/header.php';
 ?>
 
 <div class="container pb-5">
-    <div class="d-flex justify-content-between align-items-center mb-4 mt-3">
+    
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="alert alert-light border shadow-sm d-flex justify-content-between align-items-center py-2">
+                <span class="text-muted small fw-bold text-uppercase">
+                    <i class="bi bi-database-fill-gear me-1"></i> Status do Sistema
+                </span>
+                <span class="badge bg-dark">Próximo Código: <?= $proximo_id_formatado ?></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <!-- 🔽 TÍTULO MODIFICADO PARA INCLUIR O ID DO LEAD -->
             <h2 class="text-primary fw-bold mb-0">
                 <?php if ($id): ?>
                     Editar Lead #<?= $id ?>
@@ -223,7 +256,6 @@ require_once '../../includes/header.php';
                     </div>
                     <div class="card-body p-0" style="max-height: 450px; overflow-y: auto;">
                         <?php
-                        // Removida a coluna deleted_at que causava o erro
                         $stmt_lista = $conn->query("SELECT id, titulo, bairro FROM imoveis ORDER BY titulo ASC");
                         $imoveis_db = $stmt_lista->fetchAll(PDO::FETCH_ASSOC);
 
@@ -250,7 +282,6 @@ require_once '../../includes/header.php';
 </div>
 
 <script>
-// Máscara de moeda simples
 document.getElementById('valor_mascara').addEventListener('input', function(e) {
     let val = e.target.value.replace(/\D/g, '');
     if (val === '') val = '0';

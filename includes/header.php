@@ -43,14 +43,18 @@ if (!defined('BASE_URL')) {
                     <a class="nav-link" href="<?= BASE_URL ?>/dash.php">Home</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="<?= BASE_URL ?>/pages/leads/leads.php">Leads</a>
-                </li>
+                    <a class="nav-link" href="<?= BASE_URL ?>/pages/visitas/list.php">Visitas</a>
+                </li>                
+
                 <li class="nav-item">
                     <a class="nav-link" href="<?= BASE_URL ?>/pages/leads/leads_ppasso.php">LPP</a>
                 </li>    
                 <li class="nav-item">
                     <a class="nav-link" href="<?= BASE_URL ?>/pages/leads/leads_kanban.php">Kanban</a>
-                </li>                            
+                </li>       
+                <li class="nav-item">
+                    <a class="nav-link" href="<?= BASE_URL ?>/pages/leads/leads.php">Leads</a>
+                </li>
                 <li class="nav-item">
                     <a class="nav-link" href="<?= BASE_URL ?>/pages/imoveis/list.php">Imóveis</a>
                 </li>
@@ -58,9 +62,7 @@ if (!defined('BASE_URL')) {
                     <a class="nav-link" href="<?= BASE_URL ?>/pages/proprietarios/list.php">Proprietários</a>
                 </li>     
                            
-                <li class="nav-item">
-                    <a class="nav-link" href="<?= BASE_URL ?>/pages/visitas/list.php">Visitas</a>
-                </li>
+
 
                 <li class="nav-item">
                     <a class="nav-link" href="<?= BASE_URL ?>/pages/visitas/calendario.php">Calendario</a>
