@@ -4,6 +4,7 @@ require_once '../../includes/auth.php';
 require_once '../../conn_cap.php';
 
 $id = isset($_GET['id']) && is_numeric($_GET['id']) ? (int)$_GET['id'] : null;
+$msg_sucesso = false;
 
 // ==========================================
 // BUSCAR PRÓXIMO ID (AUTO_INCREMENT)
@@ -14,15 +15,32 @@ try {
     $stmt_status = $conn->query("SHOW TABLE STATUS LIKE 'leads'");
     $status = $stmt_status->fetch(PDO::FETCH_ASSOC);
     $proximo_id_bruto = $status['Auto_increment'];
-    // Formata o próximo ID com 3 dígitos para exibição no topo
     $proximo_id_formatado = "L" . str_pad($proximo_id_bruto, 3, '0', STR_PAD_LEFT);
-} catch (Exception $e) {
-    // Fallback silencioso
+} catch (Exception $e) {}
+
+// ==========================================
+// LÓGICA DE NAVEGAÇÃO
+// ==========================================
+$first_id = null; $prev_id = null; $next_id = null; $last_id = null;
+try {
+    $first_id = $conn->query("SELECT MIN(id) FROM leads")->fetchColumn();
+    $last_id  = $conn->query("SELECT MAX(id) FROM leads")->fetchColumn();
+} catch (Exception $e) {}
+
+if ($id) {
+    $stmt_prev = $conn->prepare("SELECT id FROM leads WHERE id < ? ORDER BY id DESC LIMIT 1");
+    $stmt_prev->execute([$id]);
+    $prev_id = $stmt_prev->fetchColumn();
+
+    $stmt_next = $conn->prepare("SELECT id FROM leads WHERE id > ? ORDER BY id ASC LIMIT 1");
+    $stmt_next->execute([$id]);
+    $next_id = $stmt_next->fetchColumn();
 }
 
-// Dados padrão para inicializar o formulário
+// Dados iniciais
 $data = [
     'nome' => '', 
+    'primeiro_nome' => '', 
     'email' => '', 
     'telefone' => '', 
     'genero' => '', 
@@ -32,12 +50,13 @@ $data = [
     'quartos_min' => 0,
     'mobiliado' => 0, 
     'preferencia_localizacao' => '',
-    'origem_lead' => 'Direto'
+    'origem_lead' => 'Direto',
+    'observacoes' => ''
 ];
 
 $imoveis_selecionados = [];
 
-// Se for edição, busca os dados atuais
+// Carregar dados se ID existir
 if ($id) {
     $stmt = $conn->prepare("SELECT * FROM leads WHERE id = ?");
     $stmt->execute([$id]);
@@ -50,79 +69,62 @@ if ($id) {
     }
 }
 
-// Processar o formulário quando enviado
+// ==========================================
+// PROCESSAMENTO SALVAR
+// ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nome        = trim($_POST['nome'] ?? '');
-    $email       = trim($_POST['email'] ?? '');
-    $telefone    = trim($_POST['telefone'] ?? '');
-    $genero      = !empty($_POST['genero']) ? $_POST['genero'] : NULL;
-    $origem      = $_POST['origem_lead'] ?? 'Direto';
-    $tipo_desejo = $_POST['tipo_desejo'] ?? 'Compra';
-    $fase_funil  = $_POST['fase_funil'] ?? 'Novo';
+    $nome          = trim($_POST['nome'] ?? '');
+    $primeiro_nome = trim($_POST['primeiro_nome'] ?? '');
+    $email         = trim($_POST['email'] ?? '');
+    $telefone      = trim($_POST['telefone'] ?? '');
+    $genero        = !empty($_POST['genero']) ? $_POST['genero'] : NULL;
+    $origem        = $_POST['origem_lead'] ?? 'Direto';
+    $tipo_desejo   = $_POST['tipo_desejo'] ?? 'Compra';
+    $fase_funil    = $_POST['fase_funil'] ?? 'Novo';
+    $observacoes   = trim($_POST['observacoes'] ?? '');
     
-    $valor_bruto = $_POST['valor_max_formatado'] ?? '0';
-    $valor_max   = (float)str_replace(['.', ','], ['', '.'], $valor_bruto);
+    $valor_bruto   = $_POST['valor_max_formatado'] ?? '0';
+    $valor_max     = (float)str_replace(['.', ','], ['', '.'], $valor_bruto);
     
-    $quartos_min = (int)($_POST['quartos_min'] ?? 0);
-    $mobiliado   = isset($_POST['mobiliado']) ? 1 : 0;
-    $localizacao = trim($_POST['preferencia_localizacao'] ?? '');
+    $quartos_min   = (int)($_POST['quartos_min'] ?? 0);
+    $mobiliado     = isset($_POST['mobiliado']) ? 1 : 0;
+    $localizacao   = trim($_POST['preferencia_localizacao'] ?? '');
 
     try {
         $conn->beginTransaction();
 
         if ($id) {
-            // UPDATE LEAD
             $sql = "UPDATE leads SET 
-                        nome=?, email=?, telefone=?, genero=?, origem_lead=?, 
+                        nome=?, primeiro_nome=?, email=?, telefone=?, genero=?, origem_lead=?, 
                         tipo_desejo=?, fase_funil=?, valor_max=?, quartos_min=?, 
-                        mobiliado=?, preferencia_localizacao=?, ultima_interacao=NOW(), updated_at=NOW() 
+                        mobiliado=?, preferencia_localizacao=?, observacoes=?, updated_at=NOW() 
                     WHERE id=?";
             $stmt = $conn->prepare($sql);
-            $stmt->execute([
-                $nome, $email, $telefone, $genero, $origem, 
-                $tipo_desejo, $fase_funil, $valor_max, $quartos_min, 
-                $mobiliado, $localizacao, $id
-            ]);
+            $stmt->execute([$nome, $primeiro_nome, $email, $telefone, $genero, $origem, $tipo_desejo, $fase_funil, $valor_max, $quartos_min, $mobiliado, $localizacao, $observacoes, $id]);
         } else {
-            // INSERT LEAD
-            $sql = "INSERT INTO leads 
-                    (nome, email, telefone, genero, origem_lead, tipo_desejo, fase_funil, valor_max, quartos_min, mobiliado, preferencia_localizacao, ultima_interacao, created_at) 
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?, NOW(), NOW())";
+            $sql = "INSERT INTO leads (nome, primeiro_nome, email, telefone, genero, origem_lead, tipo_desejo, fase_funil, valor_max, quartos_min, mobiliado, preferencia_localizacao, observacoes, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())";
             $stmt = $conn->prepare($sql);
-            $stmt->execute([
-                $nome, $email, $telefone, $genero, $origem, 
-                $tipo_desejo, $fase_funil, $valor_max, $quartos_min, 
-                $mobiliado, $localizacao
-            ]);
-            
+            $stmt->execute([$nome, $primeiro_nome, $email, $telefone, $genero, $origem, $tipo_desejo, $fase_funil, $valor_max, $quartos_min, $mobiliado, $localizacao, $observacoes]);
             $id = $conn->lastInsertId();
-
-            // REGRA: L + ID(3 dígitos) + "-" + Nome
-            $id_formatado = str_pad($id, 3, '0', STR_PAD_LEFT);
-            $nomeComID = "L" . $id_formatado . "-" . $nome;
-
-            $up_nome = $conn->prepare("UPDATE leads SET nome = ? WHERE id = ?");
-            $up_nome->execute([$nomeComID, $id]);
             
-            $data['nome'] = $nomeComID; 
+            $nomeComID = "L" . str_pad($id, 3, '0', STR_PAD_LEFT) . "-" . $nome;
+            $conn->prepare("UPDATE leads SET nome = ? WHERE id = ?")->execute([$nomeComID, $id]);
         }
 
-        // ATUALIZA VÍNCULOS
         $conn->prepare("DELETE FROM lead_imoveis WHERE lead_id = ?")->execute([$id]);
-        if (!empty($_POST['imoveis']) && is_array($_POST['imoveis'])) {
-            $stmt_rel = $conn->prepare("INSERT INTO lead_imoveis (lead_id, imovel_id) VALUES (?, ?)");
+        if (!empty($_POST['imoveis'])) {
             foreach ($_POST['imoveis'] as $im_id) {
-                $stmt_rel->execute([$id, (int)$im_id]);
+                $conn->prepare("INSERT INTO lead_imoveis (lead_id, imovel_id) VALUES (?, ?)")->execute([$id, (int)$im_id]);
             }
         }
 
         $conn->commit();
-        header("Location: leads.php?msg=sucesso");
+        // Redireciona para a mesma página com o ID (evita reenvio de formulário ao dar F5)
+        header("Location: " . $_SERVER['PHP_SELF'] . "?id=" . $id . "&status=saved");
         exit;
-
     } catch (Exception $e) {
         if ($conn->inTransaction()) $conn->rollBack();
-        $erro = "Erro ao salvar: " . $e->getMessage();
+        $erro = "Erro: " . $e->getMessage();
     }
 }
 
@@ -130,34 +132,56 @@ require_once '../../includes/header.php';
 ?>
 
 <div class="container pb-5">
-    
+    <?php if (isset($_GET['status']) && $_GET['status'] == 'saved'): ?>
+        <div id="alert-success" class="alert alert-success border-0 shadow-sm mt-3 d-flex align-items-center">
+            <i class="bi bi-check-circle-fill me-2"></i> Alterações salvas com sucesso!
+        </div>
+        <script>
+            setTimeout(() => { 
+                const alert = document.getElementById('alert-success');
+                if(alert) alert.style.display = 'none';
+            }, 3000);
+        </script>
+    <?php endif; ?>
+
     <div class="row mt-3">
         <div class="col-12">
             <div class="alert alert-light border shadow-sm d-flex justify-content-between align-items-center py-2">
-                <span class="text-muted small fw-bold text-uppercase">
-                    <i class="bi bi-database-fill-gear me-1"></i> Status do Sistema
-                </span>
+                <span class="text-muted small fw-bold text-uppercase"><i class="bi bi-database-fill-gear me-1"></i> Status do Sistema</span>
                 <span class="badge bg-dark">Próximo Código: <?= $proximo_id_formatado ?></span>
             </div>
         </div>
     </div>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2 class="text-primary fw-bold mb-0">
-                <?php if ($id): ?>
-                    Editar Lead #<?= $id ?>
-                <?php else: ?>
-                    Novo Lead
-                <?php endif; ?>
-            </h2>
-            <p class="text-muted mb-0">Preencha os dados e vincule múltiplos imóveis.</p>
+        <div class="d-flex align-items-center gap-3">
+            <div>
+                <h2 class="text-primary fw-bold mb-0">
+                    <?= $id ? "Editar Lead #$id" : "Novo Lead" ?>
+                </h2>
+                <p class="text-muted mb-0 small">Cadastre ou atualize as informações do cliente.</p>
+            </div>
+
+            <?php if ($id): ?>
+            <div class="btn-group shadow-sm ms-2">
+                <a href="?id=<?= $first_id ?>" class="btn btn-outline-secondary btn-sm <?= ($id <= $first_id) ? 'disabled' : '' ?>"><i class="bi bi-chevron-double-left"></i></a>
+                <a href="?id=<?= $prev_id ?>" class="btn btn-outline-secondary btn-sm <?= !$prev_id ? 'disabled' : '' ?>"><i class="bi bi-chevron-left"></i></a>
+                <a href="?id=<?= $next_id ?>" class="btn btn-outline-secondary btn-sm <?= !$next_id ? 'disabled' : '' ?>"><i class="bi bi-chevron-right"></i></a>
+                <a href="?id=<?= $last_id ?>" class="btn btn-outline-secondary btn-sm <?= ($id >= $last_id) ? 'disabled' : '' ?>"><i class="bi bi-chevron-double-right"></i></a>
+            </div>
+            <?php endif; ?>
         </div>
-        <a href="leads.php" class="btn btn-outline-secondary shadow-sm">Voltar</a>
+        
+        <div class="d-flex gap-2">
+            <?php if($id): ?>
+                <a href="lead_view.php?id=<?= $id ?>" class="btn btn-info btn-sm text-white px-3 fw-bold shadow-sm">Ver Lead</a>
+            <?php endif; ?>
+            <a href="leads.php" class="btn btn-outline-secondary shadow-sm btn-sm px-3">Voltar à Lista</a>
+        </div>
     </div>
 
     <?php if(isset($erro)): ?>
-        <div class="alert alert-danger border-start border-4 border-danger"><?= $erro ?></div>
+        <div class="alert alert-danger"><?= $erro ?></div>
     <?php endif; ?>
 
     <form method="post">
@@ -166,11 +190,15 @@ require_once '../../includes/header.php';
                 <div class="card shadow-sm border-0 mb-3">
                     <div class="card-header bg-white fw-bold"><i class="bi bi-person me-2"></i>Dados Pessoais</div>
                     <div class="card-body row g-3">
-                        <div class="col-md-7">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Primeiro Nome</label>
+                            <input type="text" name="primeiro_nome" class="form-control" value="<?= htmlspecialchars($data['primeiro_nome']) ?>" placeholder="Ex: João">
+                        </div>
+                        <div class="col-md-5">
                             <label class="form-label small fw-bold">Nome Completo *</label>
                             <input type="text" name="nome" class="form-control" value="<?= htmlspecialchars($data['nome']) ?>" required>
                         </div>
-                        <div class="col-md-5">
+                        <div class="col-md-3">
                             <label class="form-label small fw-bold">Gênero</label>
                             <select name="genero" class="form-select">
                                 <option value="">Não informado</option>
@@ -190,7 +218,7 @@ require_once '../../includes/header.php';
                     </div>
                 </div>
 
-                <div class="card shadow-sm border-0">
+                <div class="card shadow-sm border-0 mb-3">
                     <div class="card-header bg-white fw-bold"><i class="bi bi-search me-2"></i>Perfil de Interesse</div>
                     <div class="card-body row g-3">
                         <div class="col-md-4">
@@ -209,8 +237,12 @@ require_once '../../includes/header.php';
                             <input type="number" name="quartos_min" class="form-control" value="<?= $data['quartos_min'] ?>">
                         </div>
                         <div class="col-md-12">
-                            <label class="form-label small fw-bold">Preferência de Localização</label>
+                            <label class="form-label small fw-bold">Localização Preferencial</label>
                             <input type="text" name="preferencia_localizacao" class="form-control" value="<?= htmlspecialchars($data['preferencia_localizacao']) ?>">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label small fw-bold text-danger">Observações / Notas do Lead</label>
+                            <textarea name="observacoes" class="form-control" rows="4"><?= htmlspecialchars($data['observacoes']) ?></textarea>
                         </div>
                         <div class="col-12">
                             <div class="form-check form-switch bg-light p-2 rounded">
@@ -225,18 +257,17 @@ require_once '../../includes/header.php';
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 mb-3 border-start border-4 border-primary">
                     <div class="card-body">
-                        <label class="form-label fw-bold text-primary">Fase do Funil</label>
+                        <label class="form-label fw-bold text-primary">Status Funil</label>
                         <select name="fase_funil" class="form-select mb-3 fw-bold">
                             <?php
                             $fases = ["Novo", "Contato Feito", "Tentativa de Contato", "Visita Agendada", "Visita Realizada", "Analisando", "Proposta", "Fechado", "Perdido"];
                             foreach($fases as $f) {
-                                $sel = (trim($data['fase_funil']) == $f) ? 'selected' : '';
+                                $sel = ($data['fase_funil'] == $f) ? 'selected' : '';
                                 echo "<option value=\"$f\" $sel>$f</option>";
                             }
                             ?>
                         </select>
-
-                        <label class="form-label small fw-bold">Origem do Lead</label>
+                        <label class="form-label small fw-bold">Origem</label>
                         <select name="origem_lead" class="form-select mb-3">
                             <?php 
                             $origens = ["Direto", "Instagram", "Facebook", "Site", "WhatsApp", "ZAP Imóveis", "OLX", "Indicação"];
@@ -246,34 +277,26 @@ require_once '../../includes/header.php';
                             }
                             ?>
                         </select>
-                        <button type="submit" class="btn btn-primary btn-lg w-100 shadow-sm">SALVAR LEAD</button>
+                        <button type="submit" class="btn btn-primary btn-lg w-100 shadow-sm">SALVAR ALTERAÇÕES</button>
                     </div>
                 </div>
 
                 <div class="card shadow-sm border-0">
-                    <div class="card-header bg-white fw-bold small">
-                        <i class="bi bi-houses me-2"></i>Vincular Imóveis
-                    </div>
-                    <div class="card-body p-0" style="max-height: 450px; overflow-y: auto;">
+                    <div class="card-header bg-white fw-bold small">Vincular Imóveis</div>
+                    <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
                         <?php
-                        $stmt_lista = $conn->query("SELECT id, titulo, bairro FROM imoveis ORDER BY titulo ASC");
-                        $imoveis_db = $stmt_lista->fetchAll(PDO::FETCH_ASSOC);
-
-                        if (count($imoveis_db) === 0): ?>
-                            <div class="p-3 text-muted small">Nenhum imóvel disponível.</div>
-                        <?php else: 
-                            foreach($imoveis_db as $im):
-                                $checked = in_array($im['id'], $imoveis_selecionados) ? 'checked' : '';
+                        $imoveis = $conn->query("SELECT id, titulo, bairro FROM imoveis ORDER BY titulo ASC")->fetchAll(PDO::FETCH_ASSOC);
+                        foreach($imoveis as $im):
+                            $checked = in_array($im['id'], $imoveis_selecionados) ? 'checked' : '';
                         ?>
-                            <label class="list-group-item d-flex align-items-center p-3 border-bottom cursor-pointer hover-bg-light">
-                                <input class="form-check-input me-3" type="checkbox" name="imoveis[]" value="<?= $im['id'] ?>" id="im<?= $im['id'] ?>" <?= $checked ?> style="width: 20px; height: 20px;">
+                            <label class="list-group-item d-flex align-items-center p-3 border-bottom cursor-pointer">
+                                <input class="form-check-input me-3" type="checkbox" name="imoveis[]" value="<?= $im['id'] ?>" <?= $checked ?>>
                                 <div>
-                                    <span class="d-block fw-bold small text-dark"><?= htmlspecialchars($im['titulo']) ?></span>
+                                    <span class="d-block fw-bold small"><?= htmlspecialchars($im['titulo']) ?></span>
                                     <span class="text-muted small"><?= htmlspecialchars($im['bairro']) ?></span>
                                 </div>
                             </label>
-                        <?php endforeach; 
-                        endif; ?>
+                        <?php endforeach; ?>
                     </div>
                 </div>
             </div>
@@ -291,9 +314,8 @@ document.getElementById('valor_mascara').addEventListener('input', function(e) {
 </script>
 
 <style>
-.hover-bg-light:hover { background-color: #f8f9fa; transition: 0.2s; }
 .cursor-pointer { cursor: pointer; }
-.list-group-item { border: none; border-bottom: 1px solid #eee; display: flex !important; }
+.list-group-item:hover { background-color: #f8f9fa; }
 </style>
 
 <?php require_once '../../includes/footer.php'; ?>

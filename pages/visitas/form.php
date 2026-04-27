@@ -13,7 +13,7 @@ $modo = $id > 0 ? 'Editar' : 'Nova';
 
 $visita = [
     'imovel_id'    => '',
-    'lead_id'      => null, // Novo campo
+    'lead_id'      => null,
     'data_visita'  => date('Y-m-d\TH:i'),  
     'visitante'    => '',
     'observacoes'  => ''
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $dados = [
         'imovel_id'   => (int)($_POST['imovel_id'] ?? 0),
-        'lead_id'     => !empty($_POST['lead_id']) ? (int)$_POST['lead_id'] : null, // Captura o ID do Lead
+        'lead_id'     => !empty($_POST['lead_id']) ? (int)$_POST['lead_id'] : null,
         'data_visita' => $_POST['data_visita'] ?? '',
         'visitante'   => trim($_POST['visitante'] ?? ''),
         'observacoes' => trim($_POST['observacoes'] ?? '')
@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($dados['imovel_id'] <= 0) {
         $erro = "Selecione o imóvel.";
     } elseif (empty($dados['visitante'])) {
-        $erro = "Informe o nome do visitante.";
+        $erro = "Informe o nome do visitante (ou selecione um lead).";
     } elseif (empty($dados['data_visita'])) {
         $erro = "Informe a data e hora da visita.";
     } else {
@@ -68,14 +68,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$dados['imovel_id'], $dados['lead_id'], $dados['data_visita'], $dados['visitante'], $dados['observacoes']]);
                 $novo_id = $conn->lastInsertId();
 
-                // Se houver lead, podemos atualizar a fase dele no funil (opcional)
+                // Atualiza o funil do Lead se houver um vinculado
                 if ($dados['lead_id']) {
                     $upd = $conn->prepare("UPDATE leads SET fase_funil = 'Visita Realizada', ultima_interacao = NOW() WHERE id = ?");
                     $upd->execute([$dados['lead_id']]);
                 }
 
                 // ================================================
-                // ENVIO DE E-MAIL (Mantido conforme original)
+                // ENVIO DE E-MAIL COM AGENDA COMPLETA
                 // ================================================
                 $sql_mail = "
                     SELECT v.data_visita, v.visitante, i.titulo as imovel 
@@ -87,27 +87,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $todas_visitas = $conn->query($sql_mail)->fetchAll(PDO::FETCH_ASSOC);
 
                 $to = "valterpb@hotmail.com";
-                $subject = "Agenda Atualizada de Visitas - " . date('d/m/Y');
+                $subject = "Agenda Atualizada - " . date('d/m/Y');
                 
                 $message = "<html><head><style>
-                            table { border-collapse: collapse; width: 100%; font-family: sans-serif; }
+                            table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
                             th { background-color: #0d6efd; color: white; padding: 10px; text-align: left; }
                             td { border: 1px solid #ddd; padding: 10px; }
-                            tr:nth-child(even) { background-color: #f2f2f2; }
+                            tr:nth-child(even) { background-color: #f9f9f9; }
                             .destaque { background-color: #fff3cd !important; font-weight: bold; }
                             </style></head><body>
-                            <h2 style='color: #0d6efd;'>Minha Agenda de Visitas</h2>
-                            <table><thead><tr><th>Data e Hora</th><th>Imóvel</th><th>Visitante</th></tr></thead><tbody>";
+                            <h2 style='color: #0d6efd;'>Valter, sua agenda foi atualizada:</h2>
+                            <table><thead><tr><th>Data/Hora</th><th>Imóvel</th><th>Visitante</th></tr></thead><tbody>";
 
                 foreach ($todas_visitas as $v) {
                     $data_f = date('d/m/Y H:i', strtotime($v['data_visita']));
                     $classe = ($v['visitante'] == $dados['visitante'] && $v['data_visita'] == $dados['data_visita']) ? "class='destaque'" : "";
                     $message .= "<tr {$classe}><td>{$data_f}</td><td>" . htmlspecialchars($v['imovel']) . "</td><td>" . htmlspecialchars($v['visitante']) . "</td></tr>";
                 }
-
                 $message .= "</tbody></table></body></html>";
 
-                $headers = "MIME-Version: 1.0\r\nContent-type:text/html;charset=UTF-8\r\nFrom: sendmail@gabnetweb.com.br\r\n";
+                $headers = "MIME-Version: 1.0\r\nContent-type:text/html;charset=UTF-8\r\nFrom: Sistema <sendmail@gabnetweb.com.br>\r\n";
                 mail($to, $subject, $message, $headers);
                 
                 header("Location: form.php?id=$novo_id&msg=sucesso");
@@ -125,13 +124,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="container pb-5">
     <div class="row mb-4">
         <div class="col">
-            <h2 class="text-primary fw-bold"><?= $modo ?> Visita</h2>
+            <h2 class="text-primary fw-bold"><i class="bi bi-calendar-check me-2"></i><?= $modo ?> Visita</h2>
         </div>
     </div>
 
     <?php if (isset($_GET['msg']) && $_GET['msg'] == 'sucesso'): ?>
-        <div class="alert alert-success shadow-sm border-0">
-            <i class="bi bi-check-circle-fill me-2"></i> Registro salvo e agenda enviada!
+        <div class="alert alert-success shadow-sm border-0 animate__animated animate__fadeIn">
+            <i class="bi bi-check-circle-fill me-2"></i> Visita registrada e agenda enviada por e-mail!
         </div>
     <?php endif; ?>
 
@@ -146,7 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="col-md-12">
                     <label class="form-label fw-bold">Imóvel <span class="text-danger">*</span></label>
                     <select name="imovel_id" class="form-select form-select-lg border-primary" required>
-                        <option value="">Selecione o imóvel</option>
+                        <option value="">Selecione o imóvel para visita</option>
                         <?php
                         $imoveis = $conn->query("SELECT id, titulo FROM imoveis WHERE deleted_at IS NULL ORDER BY titulo")->fetchAll();
                         foreach ($imoveis as $im) {
@@ -158,13 +157,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="col-md-6">
-                    <label class="form-label fw-bold text-primary">Associar a um Lead (Opcional)</label>
+                    <label class="form-label fw-bold text-primary">Vincular a um Lead Existente</label>
                     <select name="lead_id" id="lead_id" class="form-select form-select-lg border-primary bg-light" onchange="vincularNomeLead(this)">
-                        <option value="">-- Visitante Avulso --</option>
+                        <option value="">-- Cliente não cadastrado --</option>
                         <?php
                         $leads = $conn->query("SELECT id, nome FROM leads ORDER BY nome ASC")->fetchAll();
                         foreach ($leads as $ld) {
                             $selected = ($visita['lead_id'] == $ld['id']) ? 'selected' : '';
+                            // Passamos o nome no data-attribute para o JS capturar
                             echo "<option value='{$ld['id']}' $selected data-nome='".htmlspecialchars($ld['nome'])."'>" . htmlspecialchars($ld['nome']) . "</option>";
                         }
                         ?>
@@ -178,20 +178,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="col-md-12">
                     <label class="form-label fw-bold">Nome do Visitante <span class="text-danger">*</span></label>
-                    <input type="text" name="visitante" id="visitante" class="form-control form-control-lg" value="<?= htmlspecialchars($visita['visitante']) ?>" placeholder="Nome completo" required>
-                    <small class="text-muted">Se selecionar um lead acima, o nome será preenchido automaticamente.</small>
+                    <input type="text" name="visitante" id="visitante" class="form-control form-control-lg" value="<?= htmlspecialchars($visita['visitante']) ?>" placeholder="Nome que aparecerá na agenda" required>
+                    <div class="form-text text-muted">
+                        <i class="bi bi-info-circle me-1"></i> Se você selecionar um lead acima, o nome dele será preenchido aqui automaticamente.
+                    </div>
                 </div>
 
                 <div class="col-md-12">
-                    <label class="form-label fw-bold">Observações</label>
-                    <textarea name="observacoes" class="form-control form-control-lg" rows="4"><?= htmlspecialchars($visita['observacoes']) ?></textarea>
+                    <label class="form-label fw-bold">Observações / Detalhes</label>
+                    <textarea name="observacoes" class="form-control form-control-lg" rows="4" placeholder="Ex: Cliente virá com arquiteto, focar na área de lazer..."><?= htmlspecialchars($visita['observacoes']) ?></textarea>
                 </div>
 
                 <div class="col-12 mt-4 text-end">
                     <hr>
-                    <a href="list.php" class="btn btn-light btn-lg px-4 border me-2">Voltar</a>
+                    <a href="list.php" class="btn btn-light btn-lg px-4 border me-2">Cancelar</a>
                     <button type="submit" class="btn btn-primary btn-lg px-5 shadow">
-                        <i class="bi bi-save me-2"></i> Salvar e Enviar Agenda
+                        <i class="bi bi-save me-2"></i> Salvar e Notificar Agenda
                     </button>
                 </div>
             </form>
@@ -201,13 +203,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
 /**
- * Ao selecionar um lead, preenche automaticamente o campo de texto do visitante
+ * Lógica para automatizar o preenchimento do nome
  */
 function vincularNomeLead(select) {
-    const nome = select.options[select.selectedIndex].getAttribute('data-nome');
+    // Busca o atributo 'data-nome' da opção selecionada
+    const option = select.options[select.selectedIndex];
+    const nomeDoLead = option.getAttribute('data-nome');
     const inputVisitante = document.getElementById('visitante');
-    if (nome) {
-        inputVisitante.value = nome;
+    
+    if (nomeDoLead) {
+        inputVisitante.value = nomeDoLead;
+        // Opcional: Efeito visual para mostrar que foi preenchido
+        inputVisitante.classList.add('is-valid');
+        setTimeout(() => inputVisitante.classList.remove('is-valid'), 1500);
     }
 }
 </script>
