@@ -2,7 +2,7 @@
 // pages/imoveis/catalogo.php
 require_once '../../conn_cap.php';
 
-// 1. Consulta SQL atualizada
+// 1. Consulta SQL com TODOS os campos relevantes (exceto marinha)
 $sql = "
     SELECT 
         i.id,
@@ -16,7 +16,31 @@ $sql = "
         i.mobiliado,
         i.possui_elevador,
         i.status,
-        (SELECT caminho FROM fotos_imoveis WHERE imovel_id = i.id ORDER BY id ASC LIMIT 1) AS foto_capa
+        -- Novos campos disponíveis na tabela
+        i.suites,
+        i.banheiros,
+        i.andar,
+        i.face,
+        i.tipo,
+        i.construtora,
+        i.ano_entrega,
+        i.valor_condominio,
+        i.valor_iptu,
+        i.valor_sinal,
+        i.gas_encanado,
+        i.tem_piscina,
+        i.tem_academia,
+        i.tem_salao_festas,
+        i.tem_espaco_gourmet,
+        i.tem_playground,
+        i.possui_moveis_planejados,
+        i.agua_inclusa_condominio,
+        i.gas_incluso_condominio,
+        i.aceita_financiamento,
+        i.aceita_fgts,
+        i.aceita_permuta,
+        i.aceita_consorcio,
+        (SELECT caminho FROM fotos_imoveis WHERE imovel_id = i.id ORDER BY capa DESC, ordem ASC, id ASC LIMIT 1) AS foto_capa
     FROM imoveis i 
     WHERE i.deleted_at IS NULL 
     AND i.status != 'vendido'
@@ -43,12 +67,10 @@ $url_fotos = "../../uploads/fotos_imoveis/";
         :root { --primary-color: #0d6efd; --bg-light: #f4f7f6; }
         body { background-color: var(--bg-light); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
-        /* Navbar Profissional */
         .navbar-brand-custom { text-align: center; width: 100%; padding: 20px 0; background: #fff; border-bottom: 4px solid var(--primary-color); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         .nome-corretor { font-size: 1.8rem; font-weight: 900; color: #1a1a1a; margin: 0; letter-spacing: -1px; }
         .creci-label { font-size: 0.8rem; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; }
 
-        /* Card de Imóvel Estilizado */
         .card-imovel { 
             border: none; 
             border-radius: 16px; 
@@ -59,12 +81,10 @@ $url_fotos = "../../uploads/fotos_imoveis/";
         }
         .card-imovel:hover { transform: translateY(-10px); box-shadow: 0 15px 30px rgba(0,0,0,0.12); }
         
-        /* Container da Imagem */
         .img-wrapper { position: relative; height: 240px; overflow: hidden; }
         .img-vitrine { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease; }
         .card-imovel:hover .img-vitrine { transform: scale(1.1); }
         
-        /* Badge de Status/Preço sobre a imagem */
         .price-overlay {
             position: absolute; bottom: 12px; left: 12px;
             background: rgba(13, 110, 253, 0.95); color: #fff;
@@ -72,13 +92,53 @@ $url_fotos = "../../uploads/fotos_imoveis/";
             backdrop-filter: blur(4px);
         }
 
-        /* Grade Técnica Unificada */
         .tech-grid { 
             display: grid; grid-template-columns: repeat(2, 1fr); 
             gap: 10px; background: #f8f9fa; padding: 12px; border-radius: 12px; margin-bottom: 15px;
         }
         .tech-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #444; font-weight: 500; }
         .tech-item i { color: var(--primary-color); font-size: 1rem; }
+
+        /* Seção de valores extras (condomínio, IPTU, sinal) */
+        .valores-box {
+            background: #eef2ff;
+            border-radius: 12px;
+            padding: 8px 12px;
+            margin-bottom: 15px;
+            font-size: 0.85rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .valores-item {
+            font-weight: 600;
+            color: #1e3a8a;
+        }
+        .valores-item i {
+            margin-right: 5px;
+            color: #0d6efd;
+        }
+
+        /* Badges de comodidades */
+        .comodidades {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        .badge-comodidade {
+            background: #e9ecef;
+            color: #2c3e50;
+            font-weight: 500;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
 
         .btn-detalhes { 
             width: 100%; border-radius: 10px; font-weight: 700; padding: 10px;
@@ -107,6 +167,15 @@ $url_fotos = "../../uploads/fotos_imoveis/";
     <div class="row g-4">
         <?php foreach ($imoveis as $im): 
             $foto = $im['foto_capa'] ? $url_fotos . $im['foto_capa'] : 'https://via.placeholder.com/400x300?text=Foto+em+Breve';
+            
+            // Determinar ícone do tipo de imóvel
+            $tipoIcone = match($im['tipo']) {
+                'casa' => 'bi-house-door-fill',
+                'apartamento' => 'bi-building',
+                'terreno' => 'bi-pin-map-fill',
+                'comercial' => 'bi-briefcase-fill',
+                default => 'bi-building'
+            };
         ?>
         <div class="col-md-6 col-lg-4">
             <div class="card h-100 card-imovel">
@@ -115,6 +184,9 @@ $url_fotos = "../../uploads/fotos_imoveis/";
                     <div class="price-overlay">
                         R$ <?= number_format($im['preco'], 0, ',', '.') ?>
                     </div>
+                    <span class="position-absolute top-0 start-0 m-2 bg-dark bg-opacity-75 text-white px-2 py-1 rounded-pill small">
+                        <i class="<?= $tipoIcone ?>"></i> <?= ucfirst($im['tipo']) ?>
+                    </span>
                 </div>
 
                 <div class="card-body p-4 d-flex flex-column">
@@ -123,27 +195,93 @@ $url_fotos = "../../uploads/fotos_imoveis/";
                         <p class="text-muted small mb-0">
                             <i class="bi bi-geo-alt-fill text-danger"></i> <?= htmlspecialchars($im['bairro']) ?>, <?= htmlspecialchars($im['cidade']) ?>
                         </p>
+                        <?php if(!empty($im['construtora'])): ?>
+                            <small class="text-muted"><i class="bi bi-tools"></i> Construtora: <?= htmlspecialchars($im['construtora']) ?></small>
+                        <?php endif; ?>
                     </div>
 
+                    <!-- GRADE DE CARACTERÍSTICAS PRINCIPAIS -->
                     <div class="tech-grid">
-                        <div class="tech-item">
-                            <i class="bi bi-arrows-fullscreen"></i> <?= number_format($im['area'], 0) ?> m² Útil
-                        </div>
-                        <div class="tech-item">
-                            <i class="bi bi-door-open"></i> <?= $im['quartos'] ?> Quartos
-                        </div>
-                        <div class="tech-item">
-                            <i class="bi bi-car-front"></i> <?= $im['vagas_garagem'] ?> Vagas
-                        </div>
-                        <div class="tech-item">
-                            <?php if($im['mobiliado'] == 1): ?>
-                                <i class="bi bi-check-circle-fill text-success"></i> Mobiliado
-                            <?php else: ?>
-                                <i class="bi bi-building"></i> 
-                                <?= ($im['possui_elevador'] == 1) ? 'Com Elevador' : 'Andar Baixo' ?>
-                            <?php endif; ?>
-                        </div>
+                        <div class="tech-item"><i class="bi bi-arrows-fullscreen"></i> <?= number_format($im['area'], 0) ?> m²</div>
+                        <div class="tech-item"><i class="bi bi-door-open"></i> <?= $im['quartos'] ?> quartos</div>
+                        <?php if($im['suites'] > 0): ?>
+                            <div class="tech-item"><i class="bi bi-suit-heart"></i> <?= $im['suites'] ?> suíte(s)</div>
+                        <?php endif; ?>
+                        <?php if($im['banheiros'] > 0): ?>
+                            <div class="tech-item"><i class="bi bi-droplet"></i> <?= $im['banheiros'] ?> banheiros</div>
+                        <?php endif; ?>
+                        <div class="tech-item"><i class="bi bi-car-front"></i> <?= $im['vagas_garagem'] ?> vagas</div>
+                        <?php if($im['andar'] !== null && $im['andar'] > 0): ?>
+                            <div class="tech-item"><i class="bi bi-layers"></i> <?= $im['andar'] ?>º andar</div>
+                        <?php endif; ?>
+                        <?php if($im['face'] !== null && $im['face'] != ''): ?>
+                            <div class="tech-item"><i class="bi bi-brightness-alt-high"></i> Face: <?= ucfirst($im['face']) ?></div>
+                        <?php endif; ?>
+                        <?php if($im['ano_entrega'] !== null && $im['ano_entrega'] > 0): ?>
+                            <div class="tech-item"><i class="bi bi-calendar-check"></i> Entrega: <?= $im['ano_entrega'] ?></div>
+                        <?php endif; ?>
+                        <?php if($im['mobiliado'] == 1): ?>
+                            <div class="tech-item"><i class="bi bi-sofa"></i> Mobiliado</div>
+                        <?php endif; ?>
+                        <?php if($im['possui_elevador'] == 1): ?>
+                            <div class="tech-item"><i class="bi bi-arrow-up-short"></i> Elevador</div>
+                        <?php endif; ?>
+                        <?php if($im['possui_moveis_planejados'] == 1): ?>
+                            <div class="tech-item"><i class="bi bi-grid-3x3-gap-fill"></i> Moveis planejados</div>
+                        <?php endif; ?>
                     </div>
+
+                    <!-- VALORES EXTRAS (condomínio, IPTU, sinal) -->
+                    <div class="valores-box">
+                        <?php if($im['valor_condominio'] > 0): ?>
+                            <div class="valores-item"><i class="bi bi-building"></i> Cond. R$ <?= number_format($im['valor_condominio'], 2, ',', '.') ?></div>
+                        <?php endif; ?>
+                        <?php if($im['valor_iptu'] > 0): ?>
+                            <div class="valores-item"><i class="bi bi-receipt"></i> IPTU R$ <?= number_format($im['valor_iptu'], 2, ',', '.') ?></div>
+                        <?php endif; ?>
+                        <?php if($im['valor_sinal'] > 0): ?>
+                            <div class="valores-item"><i class="bi bi-currency-exchange"></i> Sinal: R$ <?= number_format($im['valor_sinal'], 2, ',', '.') ?></div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- BADGES DE COMODIDADES -->
+                    <div class="comodidades">
+                        <?php if($im['gas_encanado'] == 1): ?>
+                            <span class="badge-comodidade"><i class="bi bi-fuel-pump"></i> Gás encanado</span>
+                        <?php endif; ?>
+                        <?php if($im['tem_piscina'] == 1): ?>
+                            <span class="badge-comodidade"><i class="bi bi-water"></i> Piscina</span>
+                        <?php endif; ?>
+                        <?php if($im['tem_academia'] == 1): ?>
+                            <span class="badge-comodidade"><i class="bi bi-heart-pulse"></i> Academia</span>
+                        <?php endif; ?>
+                        <?php if($im['tem_salao_festas'] == 1): ?>
+                            <span class="badge-comodidade"><i class="bi bi-balloon"></i> Salão de festas</span>
+                        <?php endif; ?>
+                        <?php if($im['tem_espaco_gourmet'] == 1): ?>
+                            <span class="badge-comodidade"><i class="bi bi-egg-fried"></i> Espaço gourmet</span>
+                        <?php endif; ?>
+                        <?php if($im['tem_playground'] == 1): ?>
+                            <span class="badge-comodidade"><i class="bi bi-tree"></i> Playground</span>
+                        <?php endif; ?>
+                        <?php if($im['agua_inclusa_condominio'] == 1): ?>
+                            <span class="badge-comodidade"><i class="bi bi-droplet"></i> Água inclusa</span>
+                        <?php endif; ?>
+                        <?php if($im['gas_incluso_condominio'] == 1): ?>
+                            <span class="badge-comodidade"><i class="bi bi-fire"></i> Gás incluso</span>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- OPÇÕES DE NEGOCIAÇÃO -->
+                    <?php if($im['aceita_financiamento'] == 1 || $im['aceita_fgts'] == 1 || $im['aceita_permuta'] == 1 || $im['aceita_consorcio'] == 1): ?>
+                    <div class="mb-3 small text-success">
+                                        <i class="bi bi-hand-thumbs-up"></i> Aceita:
+                        <?= $im['aceita_financiamento'] ? ' Financiamento' : '' ?>
+                        <?= $im['aceita_fgts'] ? ' FGTS' : '' ?>
+                        <?= $im['aceita_permuta'] ? ' Permuta' : '' ?>
+                        <?= $im['aceita_consorcio'] ? ' Consórcio' : '' ?>
+                    </div>
+                    <?php endif; ?>
 
                     <div class="mt-auto">
                         <a href="imovel.php?id=<?= $im['id'] ?>" class="btn btn-outline-primary btn-detalhes">
@@ -169,3 +307,4 @@ $url_fotos = "../../uploads/fotos_imoveis/";
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+<!--  -->
