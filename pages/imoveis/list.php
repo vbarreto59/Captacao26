@@ -45,7 +45,7 @@ $total_leads_absoluto = $conn->query("SELECT COUNT(*) FROM leads")->fetchColumn(
 // Lista para o select do modal
 $leads_list = $conn->query("SELECT id, nome FROM leads ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-// 2. CONSULTA PRINCIPAL DOS IMÓVEIS
+// 2. CONSULTA PRINCIPAL DOS IMÓVEIS – COM CAPA PRIORIZADA
 $where = "WHERE i.deleted_at IS NULL";
 $params = [];
 if (!empty($_GET['busca'])) {
@@ -55,10 +55,14 @@ if (!empty($_GET['busca'])) {
 }
 
 $sql = "SELECT i.*, p.nome as nome_proprietario,
-        (SELECT caminho FROM fotos_imoveis WHERE imovel_id = i.id ORDER BY id ASC LIMIT 1) AS foto_capa,
+        (SELECT caminho FROM fotos_imoveis WHERE imovel_id = i.id 
+         ORDER BY capa DESC, ordem ASC, id ASC LIMIT 1) AS foto_capa,
         (SELECT COUNT(*) FROM visitas WHERE imovel_id = i.id) AS total_visitas_imovel,
         (SELECT SUM(valor) FROM despesas WHERE imovel_id = i.id) AS total_despesas_imovel
-        FROM imoveis i LEFT JOIN proprietarios p ON i.proprietario_id = p.id $where ORDER BY i.created_at DESC";
+        FROM imoveis i 
+        LEFT JOIN proprietarios p ON i.proprietario_id = p.id 
+        $where 
+        ORDER BY i.created_at DESC";
 
 $stmt = $conn->prepare($sql);
 $stmt->execute($params);
@@ -72,9 +76,7 @@ foreach ($imoveis as $im) {
     $geral_visitas += $im['total_visitas_imovel'] ?? 0;
 }
 
-// CPL baseado no total absoluto de leads (os 22 que você mencionou)
 $cpl = ($total_leads_absoluto > 0) ? ($geral_despesas / $total_leads_absoluto) : 0;
-// CPV baseado no total de agendas criadas
 $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
 ?>
 
@@ -98,41 +100,51 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
         </div>
     </div>
 
-    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
-        <?php foreach ($imoveis as $im): 
-            $foto = $im['foto_capa'] ? '../../uploads/fotos_imoveis/' . $im['foto_capa'] : 'https://via.placeholder.com/400x250';
-            $t_resp = str_replace(["\r", "\n"], ['\r', '\n'], addslashes($im['resposta_rapida'] ?? ''));
-            $t_desc = str_replace(["\r", "\n"], ['\r', '\n'], addslashes($im['descricao'] ?? ''));
-        ?>
-        <div class="col">
-            <div class="card h-100 shadow-sm border-0 hover-up">
-                <div class="position-relative">
-                    <img src="<?= $foto ?>" class="card-img-top rounded-top">
-                    <span class="position-absolute top-0 end-0 m-2 badge bg-primary"><?= ucfirst($im['status']) ?></span>
+<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
+    <?php foreach ($imoveis as $im): 
+        $foto = $im['foto_capa'] ? '../../uploads/fotos_imoveis/' . $im['foto_capa'] : 'https://via.placeholder.com/400x250?text=Sem+Imagem';
+        $t_resp = str_replace(["\r", "\n"], ['\r', '\n'], addslashes($im['resposta_rapida'] ?? ''));
+        $t_desc = str_replace(["\r", "\n"], ['\r', '\n'], addslashes($im['descricao'] ?? ''));
+        $total_despesas = $im['total_despesas_imovel'] ?? 0;
+    ?>
+    <div class="col">
+        <div class="card h-100 shadow-sm border-0 hover-up">
+            <div class="position-relative">
+                <img src="<?= $foto ?>" class="card-img-top rounded-top" alt="Foto do imóvel">
+                <?php if (!empty($im['data_venda'])): ?>
+                    <span class="position-absolute top-0 start-0 m-2 badge bg-danger">Vendido</span>
+                <?php endif; ?>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <h5 class="fw-bold mb-1"><?= htmlspecialchars($im['titulo']) ?></h5>
+                <p class="text-muted small mb-2"><i class="bi bi-geo-alt"></i> <?= htmlspecialchars($im['bairro']) ?></p>
+                <h4 class="text-primary fw-bold mb-2">R$ <?= number_format($im['preco'], 2, ',', '.') ?></h4>
+                
+                <!-- >>> NOVO: Total de Despesas por Imóvel <<< -->
+                <div class="mb-3 p-2 bg-financeiro rounded">
+                    <small class="text-muted"><i class="bi bi-coin"></i> Total de Despesas:</small>
+                    <strong class="text-danger fs-6">R$ <?= number_format($total_despesas, 2, ',', '.') ?></strong>
                 </div>
-                <div class="card-body d-flex flex-column">
-                    <h5 class="fw-bold mb-1"><?= htmlspecialchars($im['titulo']) ?></h5>
-                    <p class="text-muted small mb-2"><i class="bi bi-geo-alt"></i> <?= htmlspecialchars($im['bairro']) ?></p>
-                    <h4 class="text-primary fw-bold mb-3">R$ <?= number_format($im['preco'], 2, ',', '.') ?></h4>
-                    
-                    <div class="mt-auto">
-                        <div class="row g-2 mb-2">
-                            <div class="col-6"><a href="view.php?id=<?= $im['id'] ?>" class="btn btn-primary btn-sm w-100">Detalhes</a></div>
-                            <div class="col-6"><button onclick="abrirModalAgendamento(<?= $im['id'] ?>, '<?= addslashes($im['titulo']) ?>')" class="btn btn-warning btn-sm w-100 fw-bold">Agendar</button></div>
-                        </div>
-                        <div class="btn-group btn-group-sm w-100">
-                            <button onclick="abrirModalDescricao('<?= $t_desc ?>')" class="btn btn-outline-primary" title="Descrição"><i class="bi bi-info-circle"></i></button>
-                            <button onclick="abrirModalRespostaRapida('<?= $t_resp ?>')" class="btn btn-outline-info" title="Resposta"><i class="bi bi-lightning-charge"></i></button>
-                            <button onclick="abrirModalDespesas(<?= $im['id'] ?>, '<?= addslashes($im['titulo']) ?>')" class="btn btn-outline-danger" title="Financeiro"><i class="bi bi-currency-dollar"></i></button>
-                            <a href="form.php?id=<?= $im['id'] ?>" class="btn btn-outline-secondary" title="Editar"><i class="bi bi-pencil"></i></a>
-                        </div>
+                
+                <div class="mt-auto">
+                    <div class="row g-2 mb-2">
+                        <div class="col-6"><a href="view.php?id=<?= $im['id'] ?>" class="btn btn-primary btn-sm w-100">Detalhes</a></div>
+                        <div class="col-6"><button onclick="abrirModalAgendamento(<?= $im['id'] ?>, '<?= addslashes($im['titulo']) ?>')" class="btn btn-warning btn-sm w-100 fw-bold">Agendar</button></div>
+                    </div>
+                    <div class="btn-group btn-group-sm w-100">
+                        <button onclick="abrirModalDescricao('<?= $t_desc ?>')" class="btn btn-outline-primary" title="Descrição"><i class="bi bi-info-circle"></i></button>
+                        <button onclick="abrirModalRespostaRapida('<?= $t_resp ?>')" class="btn btn-outline-info" title="Resposta"><i class="bi bi-lightning-charge"></i></button>
+                        <button onclick="abrirModalDespesas(<?= $im['id'] ?>, '<?= addslashes($im['titulo']) ?>')" class="btn btn-outline-danger" title="Financeiro"><i class="bi bi-currency-dollar"></i></button>
+                        <a href="form.php?id=<?= $im['id'] ?>" class="btn btn-outline-secondary" title="Editar"><i class="bi bi-pencil"></i></a>
                     </div>
                 </div>
             </div>
         </div>
-        <?php endforeach; ?>
     </div>
+    <?php endforeach; ?>
+</div>
 
+<!-- ======================== -->
     <div class="card dashboard-footer mt-5 border-0 shadow-lg">
         <div class="card-body p-4">
             <div class="row text-center align-items-center">
@@ -161,6 +173,7 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
     </div>
 </div>
 
+<!-- Modais (idênticos ao original) -->
 <div class="modal fade" id="modalDespesas" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
     <div class="modal-header bg-danger text-white"><h5>Despesas: <span id="span_imovel_titulo"></span></h5><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
     <div class="modal-body">

@@ -2,7 +2,7 @@
 // pages/imoveis/catalogo.php
 require_once '../../conn_cap.php';
 
-// 1. Consulta SQL com TODOS os campos relevantes (exceto marinha)
+// 1. Consulta SQL com TODOS os campos relevantes (incluindo vendidos)
 $sql = "
     SELECT 
         i.id,
@@ -16,7 +16,6 @@ $sql = "
         i.mobiliado,
         i.possui_elevador,
         i.status,
-        -- Novos campos disponíveis na tabela
         i.suites,
         i.banheiros,
         i.andar,
@@ -42,8 +41,7 @@ $sql = "
         i.aceita_consorcio,
         (SELECT caminho FROM fotos_imoveis WHERE imovel_id = i.id ORDER BY capa DESC, ordem ASC, id ASC LIMIT 1) AS foto_capa
     FROM imoveis i 
-    WHERE i.deleted_at IS NULL 
-    AND i.status != 'vendido'
+    WHERE i.deleted_at IS NULL AND i.data_venda IS NULL
     ORDER BY i.created_at DESC
 ";
 
@@ -90,6 +88,30 @@ $url_fotos = "../../uploads/fotos_imoveis/";
             background: rgba(13, 110, 253, 0.95); color: #fff;
             padding: 5px 15px; border-radius: 8px; font-weight: 800; font-size: 1.2rem;
             backdrop-filter: blur(4px);
+            z-index: 2;
+        }
+
+        /* TARJA DE VENDIDO */
+        .sold-tag {
+            position: absolute;
+            top: 15px;
+            right: -30px;
+            background-color: #dc3545;
+            color: white;
+            font-weight: 800;
+            font-size: 0.9rem;
+            padding: 5px 40px;
+            transform: rotate(45deg);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 3;
+            white-space: nowrap;
+        }
+
+        /* Efeito de escurecimento na imagem quando vendido */
+        .img-wrapper.vendido .img-vitrine {
+            filter: brightness(0.7);
         }
 
         .tech-grid { 
@@ -99,7 +121,6 @@ $url_fotos = "../../uploads/fotos_imoveis/";
         .tech-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #444; font-weight: 500; }
         .tech-item i { color: var(--primary-color); font-size: 1rem; }
 
-        /* Seção de valores extras (condomínio, IPTU, sinal) */
         .valores-box {
             background: #eef2ff;
             border-radius: 12px;
@@ -112,22 +133,10 @@ $url_fotos = "../../uploads/fotos_imoveis/";
             flex-wrap: wrap;
             gap: 8px;
         }
-        .valores-item {
-            font-weight: 600;
-            color: #1e3a8a;
-        }
-        .valores-item i {
-            margin-right: 5px;
-            color: #0d6efd;
-        }
+        .valores-item { font-weight: 600; color: #1e3a8a; }
+        .valores-item i { margin-right: 5px; color: #0d6efd; }
 
-        /* Badges de comodidades */
-        .comodidades {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 15px;
-        }
+        .comodidades { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
         .badge-comodidade {
             background: #e9ecef;
             color: #2c3e50;
@@ -167,8 +176,6 @@ $url_fotos = "../../uploads/fotos_imoveis/";
     <div class="row g-4">
         <?php foreach ($imoveis as $im): 
             $foto = $im['foto_capa'] ? $url_fotos . $im['foto_capa'] : 'https://via.placeholder.com/400x300?text=Foto+em+Breve';
-            
-            // Determinar ícone do tipo de imóvel
             $tipoIcone = match($im['tipo']) {
                 'casa' => 'bi-house-door-fill',
                 'apartamento' => 'bi-building',
@@ -176,14 +183,19 @@ $url_fotos = "../../uploads/fotos_imoveis/";
                 'comercial' => 'bi-briefcase-fill',
                 default => 'bi-building'
             };
+            $isVendido = ($im['status'] == 'vendido');
         ?>
         <div class="col-md-6 col-lg-4">
             <div class="card h-100 card-imovel">
-                <div class="img-wrapper">
+                <div class="img-wrapper <?= $isVendido ? 'vendido' : '' ?>">
                     <img src="<?= $foto ?>" class="img-vitrine" alt="<?= htmlspecialchars($im['titulo']) ?>">
                     <div class="price-overlay">
                         R$ <?= number_format($im['preco'], 0, ',', '.') ?>
                     </div>
+                    <!-- Tarja de VENDIDO -->
+                    <?php if ($isVendido): ?>
+                        <div class="sold-tag">VENDIDO</div>
+                    <?php endif; ?>
                     <span class="position-absolute top-0 start-0 m-2 bg-dark bg-opacity-75 text-white px-2 py-1 rounded-pill small">
                         <i class="<?= $tipoIcone ?>"></i> <?= ucfirst($im['tipo']) ?>
                     </span>
@@ -191,7 +203,7 @@ $url_fotos = "../../uploads/fotos_imoveis/";
 
                 <div class="card-body p-4 d-flex flex-column">
                     <div class="mb-3">
-                        <h5 class="fw-bold text-dark mb-1 text-truncate"><?= htmlspecialchars($im['titulo']) ?></h5>
+                        <h5 class="fw-bold text-dark mb-1 text-truncate">AP<?= $im['id'] ?>-<?= htmlspecialchars($im['titulo']) ?></h5>
                         <p class="text-muted small mb-0">
                             <i class="bi bi-geo-alt-fill text-danger"></i> <?= htmlspecialchars($im['bairro']) ?>, <?= htmlspecialchars($im['cidade']) ?>
                         </p>
@@ -200,7 +212,6 @@ $url_fotos = "../../uploads/fotos_imoveis/";
                         <?php endif; ?>
                     </div>
 
-                    <!-- GRADE DE CARACTERÍSTICAS PRINCIPAIS -->
                     <div class="tech-grid">
                         <div class="tech-item"><i class="bi bi-arrows-fullscreen"></i> <?= number_format($im['area'], 0) ?> m²</div>
                         <div class="tech-item"><i class="bi bi-door-open"></i> <?= $im['quartos'] ?> quartos</div>
@@ -227,11 +238,10 @@ $url_fotos = "../../uploads/fotos_imoveis/";
                             <div class="tech-item"><i class="bi bi-arrow-up-short"></i> Elevador</div>
                         <?php endif; ?>
                         <?php if($im['possui_moveis_planejados'] == 1): ?>
-                            <div class="tech-item"><i class="bi bi-grid-3x3-gap-fill"></i> Moveis planejados</div>
+                            <div class="tech-item"><i class="bi bi-grid-3x3-gap-fill"></i> Móveis planejados</div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- VALORES EXTRAS (condomínio, IPTU, sinal) -->
                     <div class="valores-box">
                         <?php if($im['valor_condominio'] > 0): ?>
                             <div class="valores-item"><i class="bi bi-building"></i> Cond. R$ <?= number_format($im['valor_condominio'], 2, ',', '.') ?></div>
@@ -244,7 +254,6 @@ $url_fotos = "../../uploads/fotos_imoveis/";
                         <?php endif; ?>
                     </div>
 
-                    <!-- BADGES DE COMODIDADES -->
                     <div class="comodidades">
                         <?php if($im['gas_encanado'] == 1): ?>
                             <span class="badge-comodidade"><i class="bi bi-fuel-pump"></i> Gás encanado</span>
@@ -272,10 +281,9 @@ $url_fotos = "../../uploads/fotos_imoveis/";
                         <?php endif; ?>
                     </div>
 
-                    <!-- OPÇÕES DE NEGOCIAÇÃO -->
-                    <?php if($im['aceita_financiamento'] == 1 || $im['aceita_fgts'] == 1 || $im['aceita_permuta'] == 1 || $im['aceita_consorcio'] == 1): ?>
+                    <?php if(!$isVendido && ($im['aceita_financiamento'] == 1 || $im['aceita_fgts'] == 1 || $im['aceita_permuta'] == 1 || $im['aceita_consorcio'] == 1)): ?>
                     <div class="mb-3 small text-success">
-                                        <i class="bi bi-hand-thumbs-up"></i> Aceita:
+                        <i class="bi bi-hand-thumbs-up"></i> Aceita:
                         <?= $im['aceita_financiamento'] ? ' Financiamento' : '' ?>
                         <?= $im['aceita_fgts'] ? ' FGTS' : '' ?>
                         <?= $im['aceita_permuta'] ? ' Permuta' : '' ?>
@@ -307,4 +315,3 @@ $url_fotos = "../../uploads/fotos_imoveis/";
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-<!--  -->

@@ -75,6 +75,7 @@ $imovel = [
     'rip_marinha' => '', 'regime_marinha' => 'nenhum', 'valor_foro_anual' => 0.00, 'laudemio_pago' => 0,
     'aceita_financiamento' => 0, 'aceita_fgts' => 0, 'aceita_permuta' => 0, 'aceita_consorcio' => 0,
     'valor_sinal' => 0.00,
+    // NOVOS CAMPOS
     'reservado' => 0,
     'data_reserva' => '',
     'data_venda' => ''
@@ -153,16 +154,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
             'aceita_permuta' => isset($_POST['aceita_permuta']) ? 1 : 0,
             'aceita_consorcio' => isset($_POST['aceita_consorcio']) ? 1 : 0,
             'valor_sinal' => (float)str_replace(['.', ','], ['', '.'], $_POST['valor_sinal'] ?? 0),
+            // NOVOS CAMPOS
             'reservado' => isset($_POST['reservado']) ? 1 : 0,
             'data_reserva' => !empty($_POST['data_reserva']) ? $_POST['data_reserva'] : null,
             'data_venda' => !empty($_POST['data_venda']) ? $_POST['data_venda'] : null
         ];
-
-        // Se não estiver reservado, força as datas a NULL
-        if ($dados['reservado'] == 0) {
-            $dados['data_reserva'] = null;
-            $dados['data_venda'] = null;
-        }
 
         try {
             if ($id > 0) {
@@ -276,11 +272,11 @@ if ($id > 0) {
                     </div>
                     <div class="col-md-4" id="div_data_reserva" style="<?= $imovel['reservado'] ? '' : 'display:none' ?>">
                         <label class="form-label">Data da Reserva</label>
-                        <input type="date" name="data_reserva" id="data_reserva" class="form-control" value="<?= $imovel['data_reserva'] ?>">
+                        <input type="date" name="data_reserva" class="form-control" value="<?= $imovel['data_reserva'] ?>">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Data da Venda (se vendido)</label>
-                        <input type="date" name="data_venda" id="data_venda" class="form-control" value="<?= $imovel['data_venda'] ?>">
+                        <input type="date" name="data_venda" class="form-control" value="<?= $imovel['data_venda'] ?>">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-bold">Proprietário</label>
@@ -400,30 +396,18 @@ if ($id > 0) {
                 <div class="card-body">
                     <?php
                     $diferenciais = [
-                        'tem_piscina' => 'Piscina', 
-                        'tem_academia' => 'Academia', 
-                        'tem_salao_festas' => 'Salão de Festas',
-                        'tem_espaco_gourmet' => 'Espaço Gourmet', 
-                        'tem_playground' => 'Playground', 
-                        'possui_elevador' => 'Elevador',
-                        'possui_moveis_planejados' => 'Móveis Planejados', 
-                        'gas_encanado' => 'Gás Encanado', 
-                        'mobiliado' => 'Mobiliado',
-                        // DOIS NOVOS CAMPOS INCLUÍDOS ABAIXO:
-                        'agua_inclusa_condominio' => 'Água inclusa no condomínio',
-                        'gas_incluso_condominio' => 'Gás incluso no condomínio'
+                        'tem_piscina' => 'Piscina', 'tem_academia' => 'Academia', 'tem_salao_festas' => 'Salão de Festas',
+                        'tem_espaco_gourmet' => 'Espaço Gourmet', 'tem_playground' => 'Playground', 'possui_elevador' => 'Elevador',
+                        'possui_moveis_planejados' => 'Móveis Planejados', 'gas_encanado' => 'Gás Encanado', 'mobiliado' => 'Mobiliado'
                     ];
                     foreach($diferenciais as $key => $label): ?>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="<?= $key ?>" <?= $imovel[$key]?'checked':'' ?>>
-                            <label class="form-check-label small"><?= $label ?></label>
-                        </div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" name="<?= $key ?>" <?= $imovel[$key]?'checked':'' ?>><label class="form-check-label small"><?= $label ?></label></div>
                     <?php endforeach; ?>
                 </div>
             </div>
         </div>
 
-        <!-- Gestão Interna, Marinha e Condições de Pagamento -->
+        <!-- Gestão Interna, Marinha e Condições de Pagamento (resumido, igual ao original) -->
         <div class="col-12">
             <div class="card shadow-sm border-0 border-start border-4 border-info mb-3">
                 <div class="card-header bg-white fw-bold text-info">Gestão Interna</div>
@@ -479,31 +463,13 @@ document.querySelectorAll('.js-money').forEach(el => el.addEventListener('input'
 document.querySelectorAll('.js-cep').forEach(el => el.addEventListener('input', e => { let v = e.target.value.replace(/\D/g,""); if(v.length>5) v=v.replace(/^(\d{5})(\d)/,"$1-$2"); e.target.value=v.substring(0,9); }));
 // Coordenadas
 const latField = document.getElementById('lat_field'); if(latField) latField.addEventListener('input', function(e) { const val = e.target.value; if(val.includes(',')) { const parts = val.split(','); const lat = parts[0].trim(); const lng = parts[1].trim(); if(!isNaN(lat)&&!isNaN(lng)) { document.getElementById('hidden_lat').value = lat; document.getElementById('hidden_lng').value = lng; } } });
-
-// Controle do checkbox "Reservado" – limpa campos de data quando desmarcado
+// Toggle do campo data_reserva
 const reservadoCheck = document.getElementById('reservado');
 const divDataReserva = document.getElementById('div_data_reserva');
-const dataReservaInput = document.getElementById('data_reserva');
-const dataVendaInput = document.getElementById('data_venda');
-
 if(reservadoCheck) {
-    function limparDatas() {
-        if (dataReservaInput) dataReservaInput.value = '';
-        if (dataVendaInput) dataVendaInput.value = '';
-    }
-    
-    function toggleReservado() {
-        const isChecked = reservadoCheck.checked;
-        if (divDataReserva) {
-            divDataReserva.style.display = isChecked ? 'block' : 'none';
-        }
-        if (!isChecked) {
-            limparDatas();
-        }
-    }
-    
-    reservadoCheck.addEventListener('change', toggleReservado);
-    toggleReservado();
+    reservadoCheck.addEventListener('change', function() {
+        divDataReserva.style.display = this.checked ? 'block' : 'none';
+    });
 }
 </script>
 

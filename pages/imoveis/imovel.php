@@ -17,16 +17,13 @@ if (!$imovel) {
     die("Imóvel inexistente.");
 }
 
-// Busca todas as fotos
-// 2. Busca todas as fotos priorizando a capa e a ordem definida
+// Busca todas as fotos priorizando capa e ordem
 $stmt_fotos = $conn->prepare("SELECT caminho, capa FROM fotos_imoveis WHERE imovel_id = ? ORDER BY capa DESC, ordem ASC, id ASC");
 $stmt_fotos->execute([$id]);
 $todas_fotos = $stmt_fotos->fetchAll(PDO::FETCH_ASSOC);
 
-// A foto de capa será sempre a primeira do array devido ao 'ORDER BY capa DESC'
 $foto_capa = !empty($todas_fotos) ? $todas_fotos[0]['caminho'] : null;
 $url_base_fotos = "../../uploads/fotos_imoveis/";
-
 
 $fotos_js = json_encode(array_column($todas_fotos, 'caminho'));
 
@@ -237,7 +234,7 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
 
 <div class="container py-4 py-lg-5">
     <div class="row g-4">
-        <!-- COLUNA PRINCIPAL (ESQUERDA) - TODO O CONTEÚDO -->
+        <!-- COLUNA PRINCIPAL (ESQUERDA) -->
         <div class="col-lg-8">
             <div class="card-moderno p-3 p-md-4">
                 <!-- Imagem capa -->
@@ -250,7 +247,7 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
                 <?php endif; ?>
                 
                 <!-- Título e endereço -->
-                <h1 class="fw-bold mb-2"><?= htmlspecialchars($imovel['titulo']) ?></h1>
+                <h1 class="fw-bold mb-2">AP<?= $imovel['id'] ?>-<?= htmlspecialchars($imovel['titulo']) ?></h1>
                 <div class="d-flex flex-wrap justify-content-between align-items-start mb-4">
                     <p class="text-muted">
                         <i class="bi bi-geo-alt-fill text-danger"></i> 
@@ -276,42 +273,43 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
                     <?php endif; ?>
                 </div>
 
-<!-- DIFERENCIAIS E INFRAESTRUTURA -->
-<div class="mb-4">
-    <h3 class="section-title"><i class="bi bi-stars"></i> Diferenciais & Comodidades</h3>
-    <div class="d-flex flex-wrap gap-2 mt-3">
-        <?php
-        $itens = [
-            'tem_piscina' => ['Piscina', 'bi-water'],
-            'tem_academia' => ['Academia', 'bi-dumbbell'],
-            'tem_salao_festas' => ['Salão de Festas', 'bi-people'],
-            'tem_espaco_gourmet' => ['Espaço Gourmet', 'bi-egg-fried'],
-            'tem_playground' => ['Playground', 'bi-tree'],
-            'possui_elevador' => ['Elevador', 'bi-arrow-up-short'],
-            'possui_moveis_planejados' => ['Móveis Planejados', 'bi-grid-3x3-gap'],
-            'gas_encanado' => ['Gás Encanado', 'bi-fire'],
-            'mobiliado' => ['Mobiliado', 'bi-sofa']
-        ];
-        foreach($itens as $campo => $info):
-            $ativo = !empty($imovel[$campo]) && $imovel[$campo] == 1;
-            // Exibe APENAS se o item estiver ativo (true)
-            if($ativo):
-                $icone = $info[1];
-                $texto = $info[0];
-        ?>
-            <div class="tag-presente">
-                <i class="bi <?= $icone ?>"></i> <?= $texto ?>
-            </div>
-        <?php 
-            endif;
-        endforeach; 
-        ?>
-    </div>
-</div>
-                
-                <!-- ========================================================= -->
+                <!-- DIFERENCIAIS & COMODIDADES (AGORA COM ÁGUA/GÁS INCLUSOS) -->
+                <div class="mb-4">
+                    <h3 class="section-title"><i class="bi bi-stars"></i> Diferenciais & Comodidades</h3>
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <?php
+                        // Lista de diferenciais (somente os que devem ser exibidos quando TRUE)
+                        $itens = [
+                            'tem_piscina' => ['Piscina', 'bi-water'],
+                            'tem_academia' => ['Academia', 'bi-dumbbell'],
+                            'tem_salao_festas' => ['Salão de Festas', 'bi-people'],
+                            'tem_espaco_gourmet' => ['Espaço Gourmet', 'bi-egg-fried'],
+                            'tem_playground' => ['Playground', 'bi-tree'],
+                            'possui_elevador' => ['Elevador', 'bi-arrow-up-short'],
+                            'possui_moveis_planejados' => ['Móveis Planejados', 'bi-grid-3x3-gap'],
+                            'gas_encanado' => ['Gás Encanado', 'bi-fire'],
+                            'mobiliado' => ['Mobiliado', 'bi-sofa'],
+                            // NOVOS CAMPOS INCLUÍDOS ABAIXO
+                            'agua_inclusa_condominio' => ['Água inclusa no condomínio', 'bi-droplet-half'],
+                            'gas_incluso_condominio' => ['Gás incluso no condomínio', 'bi-fuel-pump']
+                        ];
+                        foreach($itens as $campo => $info):
+                            // Exibe APENAS se o campo for 1 (true)
+                            if(isset($imovel[$campo]) && $imovel[$campo] == 1):
+                                $icone = $info[1];
+                                $texto = $info[0];
+                        ?>
+                            <div class="tag-presente">
+                                <i class="bi <?= $icone ?>"></i> <?= $texto ?>
+                            </div>
+                        <?php 
+                            endif;
+                        endforeach; 
+                        ?>
+                    </div>
+                </div>
+
                 <!-- CARD FINANCEIRO (VISÍVEL APENAS NO MOBILE) -->
-                <!-- ========================================================= -->
                 <div class="d-block d-lg-none mb-5">
                     <div class="finance-card p-4">
                         <div class="text-center mb-3">
@@ -362,24 +360,16 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
                                 <i class="bi bi-check-circle-fill"></i> Sinal sugerido: <strong>R$ <?= number_format($imovel['valor_sinal'], 2, ',', '.') ?></strong>
                             </div>
                         <?php endif; ?>
-
                     </div>
-
                 </div>
-                
 
-
-                <!-- DESCRIÇÃO (agora abaixo do card mobile) -->
-<div>
-    <h3 class="section-title"><i class="bi bi-file-text"></i> Descrição</h3>
-    <div class="ps-2 pe-2" style="white-space: pre-line; line-height: 1.7; color: #2d3e50;">
-        <?= htmlspecialchars($imovel['descricao']) ?>
-    </div>
-</div>
-                
-
-                
-
+                <!-- DESCRIÇÃO -->
+                <div>
+                    <h3 class="section-title"><i class="bi bi-file-text"></i> Descrição</h3>
+                    <div class="ps-2 pe-2" style="white-space: pre-line; line-height: 1.7; color: #2d3e50;">
+                        <?= htmlspecialchars($imovel['descricao']) ?>
+                    </div>
+                </div>
 
                 <!-- CONTATOS (síndico/portaria) -->
                 <?php if(!empty($imovel['contato_sindico']) || !empty($imovel['contato_portaria'])): ?>
@@ -396,10 +386,7 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
                 </div>
                 <?php endif; ?>
 
-                
-
-                
-                <!-- GALERIA DE FOTOS (miniaturas) -->
+                <!-- GALERIA DE FOTOS -->
                 <?php if (!empty($todas_fotos)): ?>
                 <div>
                     <h3 class="section-title"><i class="bi bi-images"></i> Galeria completa</h3>
@@ -415,7 +402,7 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
                 </div>
                 <?php endif; ?>
 
-                <!-- MAPA (se houver coordenadas) -->
+                <!-- MAPA -->
                 <?php if(!empty($imovel['latitude']) && !empty($imovel['longitude'])): ?>
                 <div class="mb-4">
                     <h3 class="section-title"><i class="bi bi-map"></i> Localização no mapa</h3>
@@ -531,11 +518,6 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-
-<!-- SCRIPTS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
     // Galeria
     const fotos = <?= $fotos_js ?>;
@@ -560,33 +542,27 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
         modalImg.src = urlBase + fotos[currentIndex];
     }
     
-    // Mapa com alternância entre camadas
+    // Mapa
     <?php if(!empty($imovel['latitude']) && !empty($imovel['longitude'])): ?>
         const lat = <?= $imovel['latitude'] ?>;
         const lng = <?= $imovel['longitude'] ?>;
         
-        // Inicializa o mapa
         const map = L.map('mapaImovel').setView([lat, lng], 16);
         
-        // Camada de Mapa Padrão (colorido)
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         });
         
-        // Camada de Satélite (usando ArcGIS World Imagery - gratuito e sem chave)
         const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
         });
         
-        // Adiciona a camada padrão inicialmente
         osmLayer.addTo(map);
         
-        // Marcador
         const marker = L.marker([lat, lng]).addTo(map)
             .bindPopup("<strong><?= addslashes(htmlspecialchars($imovel['titulo'])) ?></strong><br>Localização aproximada")
             .openPopup();
         
-        // Criar controle de camadas personalizado (botões)
         const controlContainer = L.control({ position: 'topright' });
         controlContainer.onAdd = function() {
             const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
@@ -617,12 +593,9 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
         };
         controlContainer.addTo(map);
         
-        // Ajusta o mapa quando a modal for aberta (caso necessário)
         setTimeout(() => { map.invalidateSize(); }, 200);
     <?php endif; ?>
 </script>
-
-
 
 </body>
 </html>

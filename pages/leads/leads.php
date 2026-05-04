@@ -30,7 +30,6 @@ if (isset($_POST['action'])) {
         echo json_encode(['status' => $stmt->execute([$val, $id]) ? 'success' : 'error']);
     }
     elseif ($_POST['action'] == 'add_agenda') {
-        // Título fixo "Visita", descrição = nome do lead + observações extras (opcional)
         $lead_nome = $_POST['lead_nome'];
         $obs_extra = isset($_POST['descricao']) ? trim($_POST['descricao']) : '';
         $descricao_final = $lead_nome;
@@ -69,10 +68,27 @@ function getFaseColor($fase) {
     return $cores[$fase] ?? 'bg-light text-dark';
 }
 
-$sql = "SELECT l.*, COALESCE(DATEDIFF(NOW(), l.ultima_interacao), 0) as dias_parado,
+// ==========================================
+// CONSULTA PRINCIPAL (com visitas e nome do imóvel, sem status)
+// ==========================================
+$sql = "SELECT l.*, 
+        COALESCE(DATEDIFF(NOW(), l.ultima_interacao), 0) as dias_parado,
         (SELECT GROUP_CONCAT(res ORDER BY data_registro DESC SEPARATOR '||') FROM (
-            SELECT CONCAT(DATE_FORMAT(data_registro, '%d/%m'), ' - ', detalhes) as res, lead_id, data_registro FROM lead_historico 
-        ) as sub_hist WHERE sub_hist.lead_id = l.id) as resumo_historico
+            SELECT CONCAT(DATE_FORMAT(data_registro, '%d/%m'), ' - ', detalhes) as res, lead_id, data_registro 
+            FROM lead_historico 
+        ) as sub_hist WHERE sub_hist.lead_id = l.id) as resumo_historico,
+        (SELECT GROUP_CONCAT(v_res ORDER BY dv DESC SEPARATOR '||') FROM (
+            SELECT 
+                CONCAT(
+                    DATE_FORMAT(v.data_visita, '%d/%m %H:%i'),
+                    ' - ',
+                    COALESCE(i.titulo, 'Sem imóvel')
+                ) as v_res,
+                v.lead_id,
+                v.data_visita as dv
+            FROM visitas v
+            LEFT JOIN imoveis i ON v.imovel_id = i.id
+        ) as sub_v WHERE sub_v.lead_id = l.id) as ultimas_visitas_reais
         FROM leads l $where ORDER BY l.id DESC";
 
 $stmt = $conn->prepare($sql);
@@ -94,31 +110,58 @@ require_once '../../includes/header.php';
     .temp-badge.active { filter: grayscale(0); transform: scale(1.2); opacity: 1; }
     .row-shared { background-color: #f0f7ff !important; border-left: 6px solid #0d6efd !important; }
 
-    /* Estilo para o filtro de temperatura */
+    /* Filtros */
     .filter-temp-link { text-decoration: none; color: #666; padding: 5px 12px; border-radius: 20px; border: 1px solid #ddd; background: #fff; font-size: 0.85rem; transition: 0.2s; white-space: nowrap; }
     .filter-temp-link:hover { background: #eee; }
     .filter-temp-link.active { background: #333; color: #fff; border-color: #333; }
 
-    /* Botão limpar filtros */
     .btn-limpar-filtros { 
-        text-decoration: none; 
-        color: #dc3545; 
-        padding: 5px 12px; 
-        border-radius: 20px; 
-        border: 1px solid #dc3545; 
-        background: #fff; 
-        font-size: 0.85rem; 
-        transition: 0.2s; 
-        white-space: nowrap;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
+        text-decoration: none; color: #dc3545; padding: 5px 12px; border-radius: 20px; border: 1px solid #dc3545; background: #fff; font-size: 0.85rem; transition: 0.2s; 
+        display: inline-flex; align-items: center; gap: 4px;
     }
     .btn-limpar-filtros:hover { background: #dc3545; color: #fff; }
 
-    /* ==================== RESPONSIVO ==================== */
+    /* ==================== CORES POR TEMPERATURA (linha da tabela e cards) ==================== */
+    tr.lead-quente,
+    .lead-card.lead-quente {
+        background-color: #f8d7da !important;  /* vermelho claro */
+        border-left: 5px solid #dc3545 !important;
+    }
+    tr.lead-quente:hover,
+    .lead-card.lead-quente:hover {
+        background-color: #f1b0b7 !important;
+    }
 
-    /* Cards para mobile */
+    tr.lead-morno,
+    .lead-card.lead-morno {
+        background-color: #fff3cd !important;  /* amarelo claro */
+        border-left: 5px solid #ffc107 !important;
+    }
+    tr.lead-morno:hover,
+    .lead-card.lead-morno:hover {
+        background-color: #ffe69c !important;
+    }
+
+    tr.lead-frio,
+    .lead-card.lead-frio {
+        background-color: #d1ecf1 !important;  /* azul claro */
+        border-left: 5px solid #17a2b8 !important;
+    }
+    tr.lead-frio:hover,
+    .lead-card.lead-frio:hover {
+        background-color: #a6d5e0 !important;
+    }
+
+    /* Destaque do ícone de temperatura ativo */
+    .lead-quente .temp-badge[data-temp="Quente"],
+    .lead-morno .temp-badge[data-temp="Morno"],
+    .lead-frio .temp-badge[data-temp="Frio"] {
+        transform: scale(1.25);
+        filter: none;
+        opacity: 1;
+    }
+
+    /* Cards mobile */
     .lead-card {
         background: #fff;
         border-radius: 12px;
@@ -126,76 +169,33 @@ require_once '../../includes/header.php';
         margin-bottom: 16px;
         overflow: hidden;
         border: 1px solid rgba(0,0,0,0.06);
+        transition: background-color 0.2s;
     }
-    .lead-card-header {
-        padding: 12px 16px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 1px solid rgba(0,0,0,0.05);
-    }
-    .lead-card-body {
-        padding: 12px 16px;
-    }
-    .lead-card-footer {
-        padding: 10px 16px;
-        background: #f8f9fa;
-        border-top: 1px solid rgba(0,0,0,0.05);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 8px;
-    }
-    .lead-card-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 6px 0;
-        border-bottom: 1px solid #f1f1f1;
-    }
+    .lead-card-header { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(0,0,0,0.05); }
+    .lead-card-body { padding: 12px 16px; }
+    .lead-card-footer { padding: 10px 16px; background: #f8f9fa; border-top: 1px solid rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .lead-card-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f1f1f1; }
     .lead-card-row:last-child { border-bottom: none; }
     .lead-card-label { font-size: 0.75rem; color: #888; text-transform: uppercase; font-weight: 600; }
     .lead-card-value { font-size: 0.9rem; color: #333; }
 
-    /* Ocultar tabela em mobile, mostrar cards */
+    /* Responsividade */
     @media (max-width: 991px) {
         .table-responsive-desktop { display: none !important; }
         .cards-mobile { display: block !important; }
     }
-
-    /* Ocultar cards em desktop, mostrar tabela */
     @media (min-width: 992px) {
         .table-responsive-desktop { display: block !important; }
         .cards-mobile { display: none !important; }
     }
-
-    /* Ajustes para filtros em mobile */
     @media (max-width: 767px) {
-        .filtros-container {
-            flex-direction: column !important;
-            align-items: stretch !important;
-        }
-        .filtros-container .d-flex {
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        .scroll-x {
-            padding-bottom: 6px;
-        }
-        .scroll-x .btn {
-            font-size: 0.75rem;
-            padding: 4px 10px;
-        }
+        .filtros-container { flex-direction: column !important; align-items: stretch !important; }
+        .scroll-x { padding-bottom: 6px; }
+        .scroll-x .btn { font-size: 0.75rem; padding: 4px 10px; }
     }
-
-    /* Botões de ação em mobile */
     @media (max-width: 575px) {
-        .lead-card-footer .btn-group {
-            width: 100%;
-        }
-        .lead-card-footer .btn-group .btn {
-            flex: 1;
-        }
+        .lead-card-footer .btn-group { width: 100%; }
+        .lead-card-footer .btn-group .btn { flex: 1; }
     }
 </style>
 
@@ -211,7 +211,7 @@ require_once '../../includes/header.php';
                 <input type="text" name="busca" class="form-control" placeholder="Pesquisar..." value="<?= htmlspecialchars($busca) ?>">
                 <button type="submit" class="btn btn-light border"><i class="bi bi-search"></i></button>
             </form>
-            <a href="lead_form.php" class="btn btn-primary shadow-sm"><i class="bi bi-plus-lg"></i></a>
+            <a href="lead_form.php" class="btn btn-primary shadow-sm"><i class="bi bi-plus-lg"></i>Novo</a>
         </div>
     </div>
 
@@ -229,16 +229,10 @@ require_once '../../includes/header.php';
         <a href="?fase=<?= urlencode($fase_ativa) . ($busca ? "&busca=$busca" : "") ?>" class="filter-temp-link <?= $temp_ativa == '' ? 'active' : '' ?>">Todos</a>
         <?php foreach ($temps_lista as $key => $label): ?>
             <a href="?temperatura=<?= $key . ($fase_ativa ? "&fase=".urlencode($fase_ativa) : "") . ($busca ? "&busca=$busca" : "") ?>" 
-               class="filter-temp-link <?= $temp_ativa == $key ? 'active' : '' ?>">
-                <?= $label ?>
-            </a>
+               class="filter-temp-link <?= $temp_ativa == $key ? 'active' : '' ?>"><?= $label ?></a>
         <?php endforeach; ?>
-
-        <!-- Botão Limpar Todos os Filtros -->
         <?php if ($fase_ativa || $temp_ativa || $busca): ?>
-            <a href="leads.php" class="btn-limpar-filtros ms-auto">
-                <i class="bi bi-x-circle"></i> Limpar Filtros
-            </a>
+            <a href="leads.php" class="btn-limpar-filtros ms-auto"><i class="bi bi-x-circle"></i> Limpar Filtros</a>
         <?php endif; ?>
     </div>
 
@@ -261,66 +255,99 @@ require_once '../../includes/header.php';
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($lista as $l): 
-                                $temp = $l['temperatura'] ?: 'Morno';
-                                $is_shared = (int)($l['compartilhado_parceiro'] ?? 0);
-                                $v_max = ($l['valor_max'] > 0) ? 'R$ ' . number_format($l['valor_max'], 0, ',', '.') : 'N/I';
-                                $bg_temp = match($temp){'Quente'=>'bg-danger bg-opacity-10','Morno'=>'bg-warning bg-opacity-10','Frio'=>'bg-info bg-opacity-10',default=>'bg-light'};
-                            ?>
-                            <tr id="row-lead-<?= $l['id'] ?>" class="<?= $is_shared ? 'row-shared' : '' ?>">
-                                <td class="ps-3 small text-muted">#<?= $l['id'] ?></td>
-                                <td style="width: 150px;">
-                                    <span class="badge <?= getFaseColor($l['fase_funil']) ?> w-100 py-2 mb-1"><?= $l['fase_funil'] ?: 'Novo' ?></span>
-                                    <div class="text-center small text-muted fw-bold"><?= $l['dias_parado'] ?> dias parado</div>
-                                </td>
-                                <td>
-                                    <div class="name-row-container d-flex align-items-center gap-3 <?= $bg_temp ?>">
-                                        <span class="fw-bold fs-5 text-dark"><?= htmlspecialchars($l['nome']) ?></span>
-                                        <i class="bi bi-journal-text btn-obs fs-4" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" data-obs="<?= htmlspecialchars($l['observacoes']) ?>"></i>
-                                        <span class="ms-auto badge bg-white text-dark border shadow-sm py-2 px-3 small">Teto: <strong><?= $v_max ?></strong></span>
-                                    </div>
-                                    <div class="obs-preview <?= $bg_temp ?> btn-obs" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" data-obs="<?= htmlspecialchars($l['observacoes']) ?>" id="obs-preview-<?= $l['id'] ?>">
-                                        <?= !empty($l['observacoes']) ? nl2br(htmlspecialchars($l['observacoes'])) : '<span class="text-muted italic">Clique aqui para adicionar observações...</span>' ?>
-                                    </div>
+    <?php foreach ($lista as $l): 
+        $temp = $l['temperatura'] ?: 'Morno';
+        $is_shared = (int)($l['compartilhado_parceiro'] ?? 0);
+        $v_max = ($l['valor_max'] > 0) ? 'R$ ' . number_format($l['valor_max'], 0, ',', '.') : 'N/I';
+        // Define a classe CSS para a linha de acordo com a temperatura
+        $classe_temperatura = match($temp) {
+            'Quente' => 'lead-quente',
+            'Morno'  => 'lead-morno',
+            'Frio'   => 'lead-frio',
+            default  => 'lead-morno'
+        };
+    ?>
+    <tr id="row-lead-<?= $l['id'] ?>" class="<?= $is_shared ? 'row-shared' : '' ?> <?= $classe_temperatura ?>">
+        <td class="ps-3 small text-muted btn">#<?= $l['id'] ?></td>
+        <td style="width: 150px;" class="<?= $classe_temperatura ?>">
+            <span class="badge <?= getFaseColor($l['fase_funil']) ?> w-100 py-2 mb-1"><?= $l['fase_funil'] ?: 'Novo' ?></span>
+            <div class="text-center small text-muted fw-bold"><?= $l['dias_parado'] ?> dias parado</div>
+        </td>
+        <td>
+<div class="name-row-container d-flex align-items-center gap-2">
+    <!-- Estrela de Favorito -->
+    <i class="bi <?= $l['favorito'] ? 'bi-star-fill text-warning' : 'bi-star text-muted' ?> btn-favorito fs-5" 
+       data-id="<?= $l['id'] ?>" 
+       style="cursor: pointer;"></i>
 
-                                    <div class="hist-container">
-                                        <?php if (!empty($l['resumo_historico'])): 
-                                            $hists = explode('||', $l['resumo_historico']);
-                                            foreach (array_slice($hists, 0, 3) as $h): ?>
-                                                <div class="hist-item"><i class="bi bi-record-fill text-primary me-1" style="font-size: 0.5rem;"></i> <?= htmlspecialchars($h) ?></div>
-                                        <?php endforeach; else: ?>
-                                            <div class="text-muted small">Sem interações recentes.</div>
-                                        <?php endif; ?>
-                                    </div>
-                                </td>
-                                <td class="text-center">
-                                    <div class="d-flex justify-content-center gap-2 mb-2">
-                                        <span class="temp-badge <?= $temp == 'Quente' ? 'active' : '' ?>" data-id="<?= $l['id'] ?>" data-temp="Quente">🔥</span>
-                                        <span class="temp-badge <?= $temp == 'Morno' ? 'active' : '' ?>" data-id="<?= $l['id'] ?>" data-temp="Morno">⚖️</span>
-                                        <span class="temp-badge <?= $temp == 'Frio' ? 'active' : '' ?>" data-id="<?= $l['id'] ?>" data-temp="Frio">❄️</span>
-                                    </div>
-                                    <select class="form-select form-select-sm select-step" data-id="<?= $l['id'] ?>">
-                                        <option value="">Próximo Passo...</option>
-                                        <?php foreach ($opcoes_passos as $op): ?>
-                                            <option value="<?= $op ?>" <?= ($l['proximo_passo'] == $op ? 'selected' : '') ?>><?= $op ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </td>
-                                <td class="text-center">
-                                    <div class="form-check form-switch d-inline-block">
-                                        <input class="form-check-input toggle-share" type="checkbox" role="switch" style="cursor: pointer;"
-                                               data-id="<?= $l['id'] ?>" <?= $is_shared ? 'checked' : '' ?>>
-                                    </div>
-                                </td>
-                                <td class="text-end pe-3">
-                                    <div class="btn-group shadow-sm">
-                                        <button class="btn btn-sm btn-outline-warning btn-agendar" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" title="Agendar Visita"><i class="bi bi-calendar-plus"></i></button>
-                                        <a href="lead_view.php?id=<?= $l['id'] ?>" class="btn btn-sm btn-outline-primary" title="Visualizar"><i class="bi bi-eye-fill"></i></a>
-                                        <a href="lead_form.php?id=<?= $l['id'] ?>" class="btn btn-sm btn-outline-secondary" title="Editar"><i class="bi bi-pencil-square"></i></a>
-                                    </div>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
+    <span class="fw-bold fs-5 text-dark"><?= htmlspecialchars($l['nome']) ?></span>
+    
+    <i class="bi bi-journal-text btn-obs fs-4" 
+       data-id="<?= $l['id'] ?>" 
+       data-nome="<?= htmlspecialchars($l['nome']) ?>" 
+       data-obs="<?= htmlspecialchars($l['observacoes']) ?>"></i>
+    
+    <span class="ms-auto badge bg-white text-dark border shadow-sm py-2 px-3 small">
+        Teto: <strong><?= $v_max ?></strong>
+    </span>
+</div>
+            <div class="obs-preview btn-obs" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" data-obs="<?= htmlspecialchars($l['observacoes']) ?>" id="obs-preview-<?= $l['id'] ?>">
+                <?= !empty($l['observacoes']) ? nl2br(htmlspecialchars($l['observacoes'])) : '<span class="text-muted italic">Clique aqui para adicionar observações...</span>' ?>
+            </div>
+            <div class="hist-container">
+                <?php if (!empty($l['resumo_historico'])): 
+                    $hists = explode('||', $l['resumo_historico']);
+                    foreach (array_slice($hists, 0, 3) as $h): ?>
+                        <div class="hist-item"><i class="bi bi-record-fill text-primary me-1" style="font-size: 0.5rem;"></i> <?= htmlspecialchars($h) ?></div>
+                <?php endforeach; else: ?>
+                    <div class="text-muted small">Sem interações recentes.</div>
+                <?php endif; ?>
+            </div>
+        </td>
+        <td class="text-center">
+            <div class="d-flex justify-content-center gap-2 mb-2">
+                <span class="temp-badge <?= $temp == 'Quente' ? 'active' : '' ?>" data-id="<?= $l['id'] ?>" data-temp="Quente">🔥</span>
+                <span class="temp-badge <?= $temp == 'Morno' ? 'active' : '' ?>" data-id="<?= $l['id'] ?>" data-temp="Morno">⚖️</span>
+                <span class="temp-badge <?= $temp == 'Frio' ? 'active' : '' ?>" data-id="<?= $l['id'] ?>" data-temp="Frio">❄️</span>
+            </div>
+            <select class="form-select form-select-sm select-step" data-id="<?= $l['id'] ?>">
+                <option value="">Próximo Passo...</option>
+                <?php foreach ($opcoes_passos as $op): ?>
+                    <option value="<?= $op ?>" <?= ($l['proximo_passo'] == $op ? 'selected' : '') ?>><?= $op ?></option>
+                <?php endforeach; ?>
+            </select>
+        </td>
+        <td class="text-center">
+            <div class="form-check form-switch d-inline-block">
+                <input class="form-check-input toggle-share" type="checkbox" role="switch" style="cursor: pointer;"
+                       data-id="<?= $l['id'] ?>" <?= $is_shared ? 'checked' : '' ?>>
+            </div>
+        </td>
+        <td class="text-end pe-3">
+            <div class="btn-group shadow-sm w-100 mb-2">
+                <button class="btn btn-sm btn-outline-warning btn-agendar" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" title="Agendar Visita"><i class="bi bi-calendar-plus"></i></button>
+                <a href="lead_view.php?id=<?= $l['id'] ?>" class="btn btn-sm btn-outline-primary" title="Visualizar"><i class="bi bi-eye-fill"></i></a>
+                <a href="lead_form.php?id=<?= $l['id'] ?>" class="btn btn-sm btn-outline-secondary" title="Editar"><i class="bi bi-pencil-square"></i></a>
+            </div>
+            <?php if (!empty($l['ultimas_visitas_reais'])): ?>
+                <div class="text-start p-2 bg-white border rounded shadow-sm" style="font-size: 0.7rem;">
+                    <div class="fw-bold text-muted border-bottom mb-1" style="font-size: 0.6rem; letter-spacing: 0.5px;">ÚLTIMAS VISITAS</div>
+                    <?php 
+                    $visitas = explode('||', $l['ultimas_visitas_reais']);
+                    foreach ($visitas as $v): 
+                        $corStatus = 'text-primary';
+                        if (strpos($v, 'concluido') !== false) $corStatus = 'text-success';
+                        if (strpos($v, 'cancelado') !== false) $corStatus = 'text-danger';
+                    ?>
+                        <div class="mb-1 py-1 border-bottom last-visita <?= $corStatus ?>" style="line-height: 1.2;">
+                            <i class="bi bi-geo-alt-fill" style="font-size: 0.65rem;"></i> <?= htmlspecialchars($v) ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </td>
+    </tr>
+    <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
@@ -336,25 +363,27 @@ require_once '../../includes/header.php';
             $temp = $l['temperatura'] ?: 'Morno';
             $is_shared = (int)($l['compartilhado_parceiro'] ?? 0);
             $v_max = ($l['valor_max'] > 0) ? 'R$ ' . number_format($l['valor_max'], 0, ',', '.') : 'N/I';
-            $bg_temp = match($temp){'Quente'=>'bg-danger bg-opacity-10','Morno'=>'bg-warning bg-opacity-10','Frio'=>'bg-info bg-opacity-10',default=>'bg-light'};
+            // Mesma classe de temperatura para os cards
+            $classe_temperatura = match($temp) {
+                'Quente' => 'lead-quente',
+                'Morno'  => 'lead-morno',
+                'Frio'   => 'lead-frio',
+                default  => 'lead-morno'
+            };
         ?>
-        <div class="lead-card <?= $is_shared ? 'row-shared' : '' ?>" id="card-lead-<?= $l['id'] ?>">
-            <!-- Header do Card -->
-            <div class="lead-card-header <?= $bg_temp ?>">
+        <div class="lead-card <?= $is_shared ? 'row-shared' : '' ?> <?= $classe_temperatura ?>" id="card-lead-<?= $l['id'] ?>">
+            <div class="lead-card-header <?= $classe_temperatura ?>">
                 <div>
                     <span class="fw-bold text-dark"><?= htmlspecialchars($l['nome']) ?></span>
                     <div class="small text-muted">#<?= $l['id'] ?> · Teto: <strong><?= $v_max ?></strong></div>
                 </div>
                 <span class="badge <?= getFaseColor($l['fase_funil']) ?> py-2 px-3"><?= $l['fase_funil'] ?: 'Novo' ?></span>
             </div>
-
-            <!-- Body do Card -->
             <div class="lead-card-body">
                 <div class="lead-card-row">
                     <span class="lead-card-label">Inatividade</span>
                     <span class="lead-card-value text-muted fw-bold"><?= $l['dias_parado'] ?> dias parado</span>
                 </div>
-
                 <div class="lead-card-row">
                     <span class="lead-card-label">Temperatura</span>
                     <div class="d-flex gap-2">
@@ -363,7 +392,6 @@ require_once '../../includes/header.php';
                         <span class="temp-badge <?= $temp == 'Frio' ? 'active' : '' ?>" data-id="<?= $l['id'] ?>" data-temp="Frio">❄️</span>
                     </div>
                 </div>
-
                 <div class="lead-card-row">
                     <span class="lead-card-label">Próximo Passo</span>
                     <select class="form-select form-select-sm select-step" data-id="<?= $l['id'] ?>" style="width: auto; min-width: 160px; font-size: 0.8rem;">
@@ -373,7 +401,6 @@ require_once '../../includes/header.php';
                         <?php endforeach; ?>
                     </select>
                 </div>
-
                 <div class="lead-card-row">
                     <span class="lead-card-label">Compartilhar</span>
                     <div class="form-check form-switch">
@@ -381,16 +408,12 @@ require_once '../../includes/header.php';
                                data-id="<?= $l['id'] ?>" <?= $is_shared ? 'checked' : '' ?>>
                     </div>
                 </div>
-
-                <!-- Observações -->
                 <div class="mt-3">
                     <div class="lead-card-label mb-1">Observações</div>
                     <div class="obs-preview btn-obs" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" data-obs="<?= htmlspecialchars($l['observacoes']) ?>" id="obs-preview-card-<?= $l['id'] ?>" style="border-radius: 8px;">
                         <?= !empty($l['observacoes']) ? nl2br(htmlspecialchars($l['observacoes'])) : '<span class="text-muted italic">Clique para adicionar observações...</span>' ?>
                     </div>
                 </div>
-
-                <!-- Histórico -->
                 <div class="mt-3">
                     <div class="lead-card-label mb-1">Histórico</div>
                     <div class="hist-container" style="margin-top: 0;">
@@ -404,8 +427,6 @@ require_once '../../includes/header.php';
                     </div>
                 </div>
             </div>
-
-            <!-- Footer do Card -->
             <div class="lead-card-footer">
                 <div class="btn-group shadow-sm w-100">
                     <button class="btn btn-sm btn-outline-warning btn-agendar" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" title="Agendar Visita"><i class="bi bi-calendar-plus"></i> <span class="d-none d-sm-inline">Agendar</span></button>
@@ -418,7 +439,7 @@ require_once '../../includes/header.php';
     </div>
 </div>
 
-<!-- Modal Observações -->
+<!-- Modais (Observações e Agendamento) -->
 <div class="modal fade" id="modalObs" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
@@ -439,7 +460,6 @@ require_once '../../includes/header.php';
     </div>
 </div>
 
-<!-- Modal Agendamento de Visita -->
 <div class="modal fade" id="modalAgenda" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
@@ -475,10 +495,9 @@ require_once '../../includes/header.php';
 
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
 <script>
 $(document).ready(function() {
-    // Alternar compartilhamento com parceiro
+    // Alternar compartilhamento
     $(document).on('change', '.toggle-share', function() {
         const id = $(this).data('id');
         const val = $(this).is(':checked') ? 1 : 0;
@@ -486,18 +505,13 @@ $(document).ready(function() {
         const card = $(`#card-lead-${id}`);
         $.post('leads.php', { action: 'toggle_share', id: id, value: val }, function(res) {
             if(res.status === 'success') {
-                if (val === 1) {
-                    row.addClass('row-shared');
-                    card.addClass('row-shared');
-                } else {
-                    row.removeClass('row-shared');
-                    card.removeClass('row-shared');
-                }
+                if (val === 1) { row.addClass('row-shared'); card.addClass('row-shared'); }
+                else { row.removeClass('row-shared'); card.removeClass('row-shared'); }
             }
         }, 'json');
     });
 
-    // Abrir modal de observações
+    // Observações
     $(document).on('click', '.btn-obs', function() {
         const id = $(this).data('id');
         $('#obs_lead_id').val(id);
@@ -506,7 +520,6 @@ $(document).ready(function() {
         $('#modalObs').modal('show');
     });
 
-    // Salvar observações
     $('#formObs').on('submit', function(e) {
         e.preventDefault();
         const id = $('#obs_lead_id').val();
@@ -521,22 +534,20 @@ $(document).ready(function() {
         }, 'json');
     });
 
-    // Atualizar temperatura
+    // Temperatura
     $(document).on('click', '.temp-badge', function() {
         $.post('leads.php', { action: 'update_temp', id: $(this).data('id'), temp: $(this).data('temp') }, function() { location.reload(); });
     });
 
-    // Atualizar próximo passo
+    // Próximo passo
     $(document).on('change', '.select-step', function() {
         $.post('leads.php', { action: 'update_step', id: $(this).data('id'), step: $(this).val() });
     });
 
-    // ================== AGENDAR VISITA ==================
-    // Abrir modal de agendamento
+    // Agendar visita
     $(document).on('click', '.btn-agendar', function() {
         const leadId = $(this).data('id');
         const leadNome = $(this).data('nome');
-
         $('#agenda_lead_id').val(leadId);
         $('#agenda_lead_nome').val(leadNome);
         $('#agenda_lead_nome_display').val(leadNome);
@@ -545,19 +556,13 @@ $(document).ready(function() {
         $('#modalAgenda').modal('show');
     });
 
-    // Enviar formulário de agendamento
     $('#formAgenda').on('submit', function(e) {
         e.preventDefault();
         const leadId = $('#agenda_lead_id').val();
         const leadNome = $('#agenda_lead_nome').val();
         const dataEvento = $('#agenda_data').val();
         const descricaoExtra = $('#agenda_descricao').val();
-
-        if (!dataEvento) {
-            alert('Defina a data e hora da visita.');
-            return;
-        }
-
+        if (!dataEvento) { alert('Defina a data e hora da visita.'); return; }
         $.post('leads.php', {
             action: 'add_agenda',
             lead_id: leadId,
@@ -568,16 +573,46 @@ $(document).ready(function() {
             if (res.status === 'success') {
                 $('#modalAgenda').modal('hide');
                 alert('Visita agendada com sucesso!');
-            } else {
-                alert('Erro ao salvar. Verifique os dados.');
+                location.reload();
+            } else { alert('Erro ao salvar. Verifique os dados.'); }
+        }, 'json').fail(function() { alert('Erro de comunicação com o servidor.'); });
+    });
+});
+</script>
+<script>
+$(document).ready(function() {
+    // Usamos $(document).on para garantir que funcione mesmo em elementos carregados dinamicamente
+    $(document).on('click', '.btn-favorito', function(e) {
+        e.preventDefault();
+        
+        const icone = $(this);
+        const leadId = icone.data('id');
+
+        console.log("Clicado no lead ID:", leadId); // Verifique se isso aparece no F12 do navegador
+
+        $.ajax({
+            url: 'atualizar_favorito.php',
+            type: 'POST',
+            data: { id: leadId },
+            dataType: 'json',
+            success: function(response) {
+                if (response.status === 'success') {
+                    if (response.novo_status == 1) {
+                        icone.removeClass('bi-star text-muted').addClass('bi-star-fill text-warning');
+                    } else {
+                        icone.removeClass('bi-star-fill text-warning').addClass('bi-star text-muted');
+                    }
+                } else {
+                    console.error('Erro no servidor:', response.message);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Erro na requisição AJAX:', error);
+                alert('Erro ao conectar com o servidor. Verifique o console (F12).');
             }
-        }, 'json').fail(function() {
-            alert('Erro de comunicação com o servidor.');
         });
     });
-    // ====================================================
 });
 </script>
 
 <?php require_once '../../includes/footer.php'; ?>
-<!-- versao Kimi -->

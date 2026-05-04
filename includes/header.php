@@ -49,6 +49,9 @@ if (!defined('BASE_URL')) {
                     <a class="nav-link" href="<?= BASE_URL ?>/pages/leads/leads.php">Leads</a>
                 </li>  
                 <li class="nav-item">
+                    <a class="nav-link" href="<?= BASE_URL ?>/pages/leads/favoritos.php" target="_blank">Favoritos</a>
+                </li>                  
+                <li class="nav-item">
                     <a class="nav-link" href="<?= BASE_URL ?>/pages/leads/parceiros_view.php" target="_blank">Compartilhar</a>
                 </li>                  
                 <li class="nav-item">

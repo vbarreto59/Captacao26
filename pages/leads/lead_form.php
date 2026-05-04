@@ -176,6 +176,7 @@ require_once '../../includes/header.php';
             <?php if($id): ?>
                 <a href="lead_view.php?id=<?= $id ?>" class="btn btn-info btn-sm text-white px-3 fw-bold shadow-sm">Ver Lead</a>
             <?php endif; ?>
+            <a href="lead_form.php" class="btn btn-primary shadow-sm"><i class="bi bi-plus-lg"></i>Novo</a>
             <a href="leads.php" class="btn btn-outline-secondary shadow-sm btn-sm px-3">Voltar à Lista</a>
         </div>
     </div>
@@ -190,14 +191,15 @@ require_once '../../includes/header.php';
                 <div class="card shadow-sm border-0 mb-3">
                     <div class="card-header bg-white fw-bold"><i class="bi bi-person me-2"></i>Dados Pessoais</div>
                     <div class="card-body row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label small fw-bold">Primeiro Nome</label>
-                            <input type="text" name="primeiro_nome" class="form-control" value="<?= htmlspecialchars($data['primeiro_nome']) ?>" placeholder="Ex: João">
-                        </div>
-                        <div class="col-md-5">
-                            <label class="form-label small fw-bold">Nome Completo *</label>
-                            <input type="text" name="nome" class="form-control" value="<?= htmlspecialchars($data['nome']) ?>" required>
-                        </div>
+
+<div class="col-md-5">
+    <label class="form-label small fw-bold">Nome Completo *</label>
+    <input type="text" id="campo_nome_completo" name="nome" class="form-control" value="<?= htmlspecialchars($data['nome']) ?>" required>
+</div>
+<div class="col-md-4">
+    <label class="form-label small fw-bold">Primeiro Nome</label>
+    <input type="text" id="campo_primeiro_nome" name="primeiro_nome" class="form-control" value="<?= htmlspecialchars($data['primeiro_nome']) ?>" placeholder="Ex: João">
+</div>                      
                         <div class="col-md-3">
                             <label class="form-label small fw-bold">Gênero</label>
                             <select name="genero" class="form-select">
@@ -310,6 +312,18 @@ document.getElementById('valor_mascara').addEventListener('input', function(e) {
     if (val === '') val = '0';
     val = (parseInt(val) / 100).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     e.target.value = val;
+});
+</script>
+<script>
+document.getElementById('campo_nome_completo').addEventListener('input', function() {
+    // Pega o valor atual, remove espaços extras no início
+    let nomeCompleto = this.value.trimStart();
+    
+    // Divide a string por espaços e pega o primeiro elemento
+    let primeiroNome = nomeCompleto.split(' ')[0];
+    
+    // Atualiza o campo de primeiro nome
+    document.getElementById('campo_primeiro_nome').value = primeiroNome;
 });
 </script>
 
