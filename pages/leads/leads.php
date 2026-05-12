@@ -19,6 +19,11 @@ if (isset($_POST['action'])) {
         $stmt = $conn->prepare("UPDATE leads SET proximo_passo = ?, ultima_interacao = NOW() WHERE id = ?");
         echo json_encode(['status' => $stmt->execute([$_POST['step'], $id]) ? 'success' : 'error']);
     }
+    elseif ($_POST['action'] == 'toggle_hoje') {
+    $val = (int)$_POST['value'];
+    $stmt = $conn->prepare("UPDATE leads SET contatar_hoje = ? WHERE id = ?");
+    echo json_encode(['status' => $stmt->execute([$val, $id]) ? 'success' : 'error']);
+    } // 12 05 2026
     elseif ($_POST['action'] == 'update_obs') {
         $obs = $_POST['observacoes'];
         $stmt = $conn->prepare("UPDATE leads SET observacoes = ?, ultima_interacao = NOW() WHERE id = ?");
@@ -199,7 +204,7 @@ require_once '../../includes/header.php';
     }
 </style>
 
-<div class="container-fluid px-3 py-3">
+<div class="container">
     <!-- Header -->
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
         <div>
@@ -290,6 +295,7 @@ require_once '../../includes/header.php';
     <span class="ms-auto badge bg-white text-dark border shadow-sm py-2 px-3 small">
         Teto: <strong><?= $v_max ?></strong>
     </span>
+
 </div>
             <div class="obs-preview btn-obs" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" data-obs="<?= htmlspecialchars($l['observacoes']) ?>" id="obs-preview-<?= $l['id'] ?>">
                 <?= !empty($l['observacoes']) ? nl2br(htmlspecialchars($l['observacoes'])) : '<span class="text-muted italic">Clique aqui para adicionar observações...</span>' ?>
@@ -303,6 +309,12 @@ require_once '../../includes/header.php';
                     <div class="text-muted small">Sem interações recentes.</div>
                 <?php endif; ?>
             </div>
+            <!-- Exemplo de Checkbox estilizado -->
+<div class="form-check form-switch">
+    <input class="form-check-input toggle-hoje" type="checkbox" 
+           data-id="<?= $l['id'] ?>" <?= $l['contatar_hoje'] ? 'checked' : '' ?>>
+    <label class="small text-muted">Contatar hoje</label>
+</div>
         </td>
         <td class="text-center">
             <div class="d-flex justify-content-center gap-2 mb-2">
@@ -324,10 +336,11 @@ require_once '../../includes/header.php';
             </div>
         </td>
         <td class="text-end pe-3">
+
             <div class="btn-group shadow-sm w-100 mb-2">
                 <button class="btn btn-sm btn-outline-warning btn-agendar" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" title="Agendar Visita"><i class="bi bi-calendar-plus"></i></button>
-                <a href="lead_view.php?id=<?= $l['id'] ?>" class="btn btn-sm btn-outline-primary" title="Visualizar"><i class="bi bi-eye-fill"></i></a>
-                <a href="lead_form.php?id=<?= $l['id'] ?>" class="btn btn-sm btn-outline-secondary" title="Editar"><i class="bi bi-pencil-square"></i></a>
+                <a href="lead_view.php?id=<?= $l['id'] ?>" class="btn btn-sm btn-outline-primary" title="Visualizar" target="_blank"><i class="bi bi-eye-fill"></i></a>
+                <a href="lead_form.php?id=<?= $l['id'] ?>" class="btn btn-sm btn-outline-secondary" title="Editar"  target="_blank"><i class="bi bi-pencil-square"></i></a>
             </div>
             <?php if (!empty($l['ultimas_visitas_reais'])): ?>
                 <div class="text-start p-2 bg-white border rounded shadow-sm" style="font-size: 0.7rem;">
@@ -496,6 +509,14 @@ require_once '../../includes/header.php';
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+$(document).on('change', '.toggle-hoje', function() {
+    const id = $(this).data('id');
+    const val = $(this).is(':checked') ? 1 : 0;
+    
+    $.post('leads.php', { action: 'toggle_hoje', id: id, value: val }, function(res) {
+        if(res.status !== 'success') alert('Erro ao salvar seleção.');
+    }, 'json');
+});    
 $(document).ready(function() {
     // Alternar compartilhamento
     $(document).on('change', '.toggle-share', function() {
@@ -616,3 +637,5 @@ $(document).ready(function() {
 </script>
 
 <?php require_once '../../includes/footer.php'; ?>
+<!-- recuperado dia 04 05 2026
+melhorar visual -->

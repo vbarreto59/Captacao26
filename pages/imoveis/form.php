@@ -97,6 +97,14 @@ if ($id > 0 && empty($_POST)) {
     if ($row) $imovel = array_merge($imovel, $row);
 }
 
+// Busca parceiros vinculados (para edição)
+$parceiros_selecionados = [];
+if ($id > 0) {
+    $stmt_p = $conn->prepare("SELECT corretor_id FROM imovel_parceiros WHERE imovel_id = ?");
+    $stmt_p->execute([$id]);
+    $parceiros_selecionados = $stmt_p->fetchAll(PDO::FETCH_COLUMN);
+}
+
 // Processa o formulário
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
     $titulo = trim($_POST['titulo'] ?? '');
@@ -158,7 +166,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
             'data_venda' => !empty($_POST['data_venda']) ? $_POST['data_venda'] : null
         ];
 
-        // Se não estiver reservado, força as datas a NULL
         if ($dados['reservado'] == 0) {
             $dados['data_reserva'] = null;
             $dados['data_venda'] = null;
@@ -176,6 +183,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
                 $sql = "INSERT INTO imoveis ($cols) VALUES ($plds)";
                 $conn->prepare($sql)->execute(array_values($dados));
                 $id = $conn->lastInsertId();
+            }
+
+            // --- GESTÃO DE PARCEIROS ---
+            $conn->prepare("DELETE FROM imovel_parceiros WHERE imovel_id = ?")->execute([$id]);
+            if (isset($_POST['parceiros']) && is_array($_POST['parceiros'])) {
+                $stmt_parceiro = $conn->prepare("INSERT INTO imovel_parceiros (imovel_id, corretor_id) VALUES (?, ?)");
+                foreach ($_POST['parceiros'] as $corretor_id) {
+                    if (!empty($corretor_id)) {
+                        $stmt_parceiro->execute([$id, (int)$corretor_id]);
+                    }
+                }
             }
             
             // Upload de fotos
@@ -208,11 +226,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
             $erro = "Erro ao salvar: " . $e->getMessage();
         }
     }
-    if (!empty($erro)) {
-        foreach ($dados as $key => $value) {
-            if (array_key_exists($key, $imovel)) $imovel[$key] = $value;
-        }
-    }
 }
 
 // Busca fotos
@@ -229,7 +242,7 @@ if ($id > 0) {
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="text-primary m-0"><?= $modo ?> Imóvel</h2>
-            <small class="text-muted">Cadastro técnico detalhado</small>
+            <small class="text-muted">Cadastro técnico detalhado - CRECI-PE 22003</small>
         </div>
         <div class="d-flex gap-2">
             <span class="badge bg-info text-dark p-2">Versão 2026.1</span>
@@ -251,7 +264,7 @@ if ($id > 0) {
 
     <form method="post" enctype="multipart/form-data" class="row g-3" id="formImovel">
         
-        <!-- Bloco de Identificação + Reserva/Venda -->
+        <!-- Bloco de Identificação -->
         <div class="col-12">
             <div class="card shadow-sm border-0">
                 <div class="card-body row g-3">
@@ -330,11 +343,8 @@ if ($id > 0) {
                     <div class="mb-4">
                         <label class="form-label fw-bold">Adicionar novas fotos</label>
                         <input type="file" name="fotos[]" class="form-control" accept="image/jpeg,image/png,image/webp" multiple>
-                        <small class="text-muted">Várias fotos. A primeira será a capa automaticamente.</small>
                     </div>
                     <?php if ($id > 0 && count($fotos) > 0): ?>
-                        <hr>
-                        <label class="form-label fw-bold">Galeria atual (<?= count($fotos) ?> fotos)</label>
                         <div class="row g-3 mt-1">
                             <?php foreach ($fotos as $foto): 
                                 $caminho_imagem = "../../uploads/fotos_imoveis/" . $foto['caminho'];
@@ -347,22 +357,13 @@ if ($id > 0) {
                                             <?php if ($foto['capa'] == 1): ?>
                                                 <span class="badge bg-primary mb-2"><i class="bi bi-star-fill"></i> Capa</span>
                                             <?php else: ?>
-                                                <a href="?id=<?= $id ?>&set_capa=<?= $foto['id'] ?>" class="btn btn-sm btn-outline-secondary w-100 mb-1" onclick="return confirm('Definir como capa?')">
-                                                    <i class="bi bi-star"></i> Definir Capa
-                                                </a>
+                                                <a href="?id=<?= $id ?>&set_capa=<?= $foto['id'] ?>" class="btn btn-sm btn-outline-secondary w-100 mb-1" onclick="return confirm('Definir como capa?')"><i class="bi bi-star"></i> Definir Capa</a>
                                             <?php endif; ?>
-                                            <a href="?id=<?= $id ?>&delete_foto=<?= $foto['id'] ?>" class="btn btn-sm btn-outline-danger w-100" onclick="return confirm('Excluir esta foto?')">
-                                                <i class="bi bi-trash"></i> Excluir
-                                            </a>
+                                            <a href="?id=<?= $id ?>&delete_foto=<?= $foto['id'] ?>" class="btn btn-sm btn-outline-danger w-100" onclick="return confirm('Excluir esta foto?')"><i class="bi bi-trash"></i> Excluir</a>
                                         </div>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
-                        </div>
-                    <?php elseif ($id > 0 && count($fotos) == 0): ?>
-                        <div class="text-center text-muted py-4">
-                            <i class="bi bi-camera fs-1"></i>
-                            <p>Nenhuma foto cadastrada ainda.</p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -379,13 +380,20 @@ if ($id > 0) {
                     <div class="col-md-2"><label class="form-label">Suítes</label><input type="number" name="suites" class="form-control" value="<?= $imovel['suites'] ?>"></div>
                     <div class="col-md-2"><label class="form-label">Banheiros</label><input type="number" name="banheiros" class="form-control" value="<?= $imovel['banheiros'] ?>"></div>
                     <div class="col-md-1"><label class="form-label">Vagas</label><input type="number" name="vagas_garagem" class="form-control" value="<?= $imovel['vagas_garagem'] ?>"></div>
-                    <div class="col-md-2"><label class="form-label">Face</label><select name="face" class="form-select"><option value="nascente" <?= $imovel['face']=='nascente'?'selected':'' ?>>Nascente</option><option value="norte" <?= $imovel['face']=='norte'?'selected':'' ?>>Norte</option><option value="sul" <?= $imovel['face']=='sul'?'selected':'' ?>>Sul</option><option value="poente" <?= $imovel['face']=='poente'?'selected':'' ?>>Poente</option></select></div>
+                    <div class="col-md-2"><label class="form-label">Face</label>
+                        <select name="face" class="form-select">
+                            <option value="nascente" <?= $imovel['face']=='nascente'?'selected':'' ?>>Nascente</option>
+                            <option value="norte" <?= $imovel['face']=='norte'?'selected':'' ?>>Norte</option>
+                            <option value="sul" <?= $imovel['face']=='sul'?'selected':'' ?>>Sul</option>
+                            <option value="poente" <?= $imovel['face']=='poente'?'selected':'' ?>>Poente</option>
+                        </select>
+                    </div>
                     <div class="col-12"><label class="form-label fw-bold">Descrição</label><textarea name="descricao" class="form-control" rows="6"><?= htmlspecialchars($imovel['descricao']) ?></textarea></div>
                 </div>
             </div>
         </div>
 
-        <!-- Sidebar Financeira e Diferenciais -->
+        <!-- Sidebar Financeira -->
         <div class="col-md-4">
             <div class="card shadow-sm border-0 bg-light mb-3">
                 <div class="card-header fw-bold">Valores</div>
@@ -400,18 +408,10 @@ if ($id > 0) {
                 <div class="card-body">
                     <?php
                     $diferenciais = [
-                        'tem_piscina' => 'Piscina', 
-                        'tem_academia' => 'Academia', 
-                        'tem_salao_festas' => 'Salão de Festas',
-                        'tem_espaco_gourmet' => 'Espaço Gourmet', 
-                        'tem_playground' => 'Playground', 
-                        'possui_elevador' => 'Elevador',
-                        'possui_moveis_planejados' => 'Móveis Planejados', 
-                        'gas_encanado' => 'Gás Encanado', 
-                        'mobiliado' => 'Mobiliado',
-                        // DOIS NOVOS CAMPOS INCLUÍDOS ABAIXO:
-                        'agua_inclusa_condominio' => 'Água inclusa no condomínio',
-                        'gas_incluso_condominio' => 'Gás incluso no condomínio'
+                        'tem_piscina' => 'Piscina', 'tem_academia' => 'Academia', 'tem_salao_festas' => 'Salão de Festas',
+                        'tem_espaco_gourmet' => 'Espaço Gourmet', 'tem_playground' => 'Playground', 'possui_elevador' => 'Elevador',
+                        'possui_moveis_planejados' => 'Móveis Planejados', 'gas_encanado' => 'Gás Encanado', 'mobiliado' => 'Mobiliado',
+                        'agua_inclusa_condominio' => 'Água inclusa no condomínio', 'gas_incluso_condominio' => 'Gás incluso no condomínio'
                     ];
                     foreach($diferenciais as $key => $label): ?>
                         <div class="form-check">
@@ -423,7 +423,7 @@ if ($id > 0) {
             </div>
         </div>
 
-        <!-- Gestão Interna, Marinha e Condições de Pagamento -->
+        <!-- Gestão Interna -->
         <div class="col-12">
             <div class="card shadow-sm border-0 border-start border-4 border-info mb-3">
                 <div class="card-header bg-white fw-bold text-info">Gestão Interna</div>
@@ -434,6 +434,33 @@ if ($id > 0) {
             </div>
         </div>
 
+        <!-- NOVO BLOCO: Corretores Parceiros -->
+        <div class="col-12">
+            <div class="card shadow-sm border-0 border-start border-4 border-primary mb-3">
+                <div class="card-header bg-white fw-bold text-primary"><i class="bi bi-people"></i> Corretores Parceiros</div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <?php 
+                        $corretores = $conn->query("SELECT id, nome FROM corretores WHERE deleted_at IS NULL ORDER BY nome")->fetchAll();
+                        for ($i = 0; $i < 3; $i++): 
+                            $valor_atual = $parceiros_selecionados[$i] ?? '';
+                        ?>
+                        <div class="col-md-4">
+                            <label class="form-label small">Parceiro <?= $i + 1 ?></label>
+                            <select name="parceiros[]" class="form-select">
+                                <option value="">Nenhum</option>
+                                <?php foreach($corretores as $c): ?>
+                                    <option value="<?= $c['id'] ?>" <?= $valor_atual == $c['id'] ? 'selected' : '' ?>><?= htmlspecialchars($c['nome']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endfor; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documentação e Marinha -->
         <div class="col-12">
             <div class="card shadow-sm border-0 border-start border-4 border-warning mb-3">
                 <div class="card-header bg-white fw-bold">Documentação / Marinha</div>
@@ -480,35 +507,18 @@ document.querySelectorAll('.js-cep').forEach(el => el.addEventListener('input', 
 // Coordenadas
 const latField = document.getElementById('lat_field'); if(latField) latField.addEventListener('input', function(e) { const val = e.target.value; if(val.includes(',')) { const parts = val.split(','); const lat = parts[0].trim(); const lng = parts[1].trim(); if(!isNaN(lat)&&!isNaN(lng)) { document.getElementById('hidden_lat').value = lat; document.getElementById('hidden_lng').value = lng; } } });
 
-// Controle do checkbox "Reservado" – limpa campos de data quando desmarcado
 const reservadoCheck = document.getElementById('reservado');
 const divDataReserva = document.getElementById('div_data_reserva');
-const dataReservaInput = document.getElementById('data_reserva');
-const dataVendaInput = document.getElementById('data_venda');
-
 if(reservadoCheck) {
-    function limparDatas() {
-        if (dataReservaInput) dataReservaInput.value = '';
-        if (dataVendaInput) dataVendaInput.value = '';
-    }
-    
-    function toggleReservado() {
-        const isChecked = reservadoCheck.checked;
-        if (divDataReserva) {
-            divDataReserva.style.display = isChecked ? 'block' : 'none';
-        }
-        if (!isChecked) {
-            limparDatas();
-        }
-    }
-    
-    reservadoCheck.addEventListener('change', toggleReservado);
-    toggleReservado();
+    reservadoCheck.addEventListener('change', function() {
+        divDataReserva.style.display = this.checked ? 'block' : 'none';
+        if(!this.checked) { document.getElementById('data_reserva').value = ''; }
+    });
 }
 </script>
 
 <style>
-body{background:#f8f9fa}.card{border-radius:12px}#formImovel{margin-bottom:100px}
+body{background:#f8f9fa}.card{border-radius:12px}#formImovel{margin-bottom:100px}.fixed-bottom{z-index:1030}
 </style>
 
 <?php require_once '../../includes/footer.php'; ?>

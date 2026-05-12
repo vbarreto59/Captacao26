@@ -41,56 +41,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['agendar_visita'])) {
     }
 }
 
-// ================================================
-// FILTROS
-// ================================================
-$localizacao = trim($_GET['localizacao'] ?? '');
-$preco_referencia = floatval(str_replace(',', '.', $_GET['preco_referencia'] ?? 0));
-$quartos = intval($_GET['quartos'] ?? 0);
-$piscina = isset($_GET['piscina']) ? 1 : 0;
-$mobiliado = isset($_GET['mobiliado']) ? 1 : 0;
-
-// Construção da cláusula WHERE
-$where = "WHERE i.deleted_at IS NULL";
-$params = [];
-
-// Localização (busca em bairro, cidade, endereço, título)
-if (!empty($localizacao)) {
-    $local = '%' . $localizacao . '%';
-    $where .= " AND (i.titulo LIKE ? OR i.bairro LIKE ? OR i.cidade LIKE ? OR i.endereco LIKE ?)";
-    $params = array_merge($params, [$local, $local, $local, $local]);
-}
-
-// Faixa de preço (±20% em relação ao valor de referência)
-if ($preco_referencia > 0) {
-    $preco_min = $preco_referencia * 0.8;
-    $preco_max = $preco_referencia * 1.2;
-    $where .= " AND i.preco BETWEEN ? AND ?";
-    $params[] = $preco_min;
-    $params[] = $preco_max;
-}
-
-// Quartos
-if ($quartos > 0) {
-    $where .= " AND i.quartos >= ?";
-    $params[] = $quartos;
-}
-
-// Piscina
-if ($piscina) {
-    $where .= " AND i.tem_piscina = 1";
-}
-
-// Mobiliado
-if ($mobiliado) {
-    $where .= " AND i.mobiliado = 1";
-}
-
 // 1. DADOS DE APOIO
 $total_leads_absoluto = $conn->query("SELECT COUNT(*) FROM leads")->fetchColumn();
 $leads_list = $conn->query("SELECT id, nome FROM leads ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC);
 
 // 2. CONSULTA PRINCIPAL (IMÓVEIS + FOTO + FINANCEIRO + PARCEIROS)
+$where = "WHERE i.deleted_at IS NULL";
+$params = [];
+if (!empty($_GET['busca'])) {
+    $busca = '%' . trim($_GET['busca']) . '%';
+    $where .= " AND (i.titulo LIKE ? OR i.bairro LIKE ? OR i.cidade LIKE ? OR i.endereco LIKE ?)";
+    $params = array_merge($params, [$busca, $busca, $busca, $busca]);
+}
+
 $sql = "SELECT i.*, p.nome as nome_proprietario,
         (SELECT caminho FROM fotos_imoveis WHERE imovel_id = i.id ORDER BY capa DESC, id ASC LIMIT 1) AS foto_capa,
         (SELECT COUNT(*) FROM visitas WHERE imovel_id = i.id) AS total_visitas_imovel,
@@ -121,85 +84,12 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
 <?php require_once '../../includes/header.php'; ?>
 
 <style>
-    /* Estilos já existentes + novos para os filtros */
     .hover-up:hover { transform: translateY(-5px); transition: 0.3s; box-shadow: 0 .5rem 2rem rgba(0,0,0,.15)!important; }
     .card-img-top { height: 210px; object-fit: cover; }
     .dashboard-footer { background: #1a1d20; color: white; border-radius: 12px; }
     .badge-parceiro { font-size: 0.8rem; background-color: #f1f3f5; color: #495057; border: 1px solid #dee2e6; line-height: 1.4; }
     .check-imovel { width: 22px; height: 22px; cursor: pointer; }
     .btn-flutuante { position: fixed; bottom: 20px; right: 20px; z-index: 1050; display: none; }
-    
-    /* Estilos para as características */
-    .caracteristicas-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 8px;
-        background: #f8f9fa;
-        padding: 10px;
-        border-radius: 12px;
-        margin: 10px 0;
-        font-size: 0.8rem;
-    }
-    .carac-item {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        color: #2c3e50;
-    }
-    .carac-item i {
-        width: 20px;
-        color: #0d6efd;
-    }
-    .comodidades-badge {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin: 10px 0;
-    }
-    .badge-comod {
-        background: #e9ecef;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.7rem;
-        font-weight: 500;
-    }
-    .valores-detalhe {
-        background: #eef2ff;
-        padding: 8px;
-        border-radius: 10px;
-        margin: 8px 0;
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: space-between;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-    .aceita-text {
-        font-size: 0.7rem;
-        color: #28a745;
-        font-weight: bold;
-    }
-    /* Estilos da barra de filtros */
-    .filtros-card {
-        background: white;
-        border-radius: 16px;
-        padding: 20px;
-        margin-bottom: 30px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    }
-    .btn-limpar {
-        background-color: #6c757d;
-        color: white;
-    }
-    .btn-limpar:hover {
-        background-color: #5a6268;
-        color: white;
-    }
-    .faixa-preco-ajuda {
-        font-size: 0.7rem;
-        color: #6c757d;
-        margin-top: 4px;
-    }
 </style>
 
 <div class="container-fluid pb-5">
@@ -209,67 +99,17 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
             <button id="btnImprimir" class="btn btn-dark shadow btn-flutuante" onclick="gerarImpressao()">
                 <i class="bi bi-printer-fill me-2"></i> Estudar Selecionados (<span id="countCheck">0</span>)
             </button>
+            <form action="" method="GET" class="d-inline-block me-2">
+                <div class="input-group">
+                    <input type="text" name="busca" class="form-control" placeholder="Buscar..." value="<?= htmlspecialchars($_GET['busca'] ?? '') ?>">
+                    <button class="btn btn-outline-primary" type="submit"><i class="bi bi-search"></i></button>
+                </div>
+            </form>
             <a href="form.php" class="btn btn-primary shadow">Novo Imóvel</a>
         </div>
     </div>
 
-    <!-- ========================================== -->
-    <!-- FORMULÁRIO DE FILTROS                      -->
-    <!-- ========================================== -->
-    <div class="filtros-card">
-        <form method="GET" action="" class="row g-3 align-items-end">
-            <div class="col-md-3">
-                <label class="form-label fw-bold"><i class="bi bi-geo-alt"></i> Localização</label>
-                <input type="text" name="localizacao" class="form-control" placeholder="Bairro, cidade, endereço..." value="<?= htmlspecialchars($localizacao) ?>">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label fw-bold"><i class="bi bi-cash-stack"></i> Preço referência</label>
-                <input type="text" name="preco_referencia" class="form-control money" placeholder="Valor central" value="<?= $preco_referencia ? number_format($preco_referencia, 0, ',', '.') : '' ?>">
-                <div class="faixa-preco-ajuda">Busca ±20%</div>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label fw-bold"><i class="bi bi-door-open"></i> Quartos</label>
-                <select name="quartos" class="form-select">
-                    <option value="0">Qualquer</option>
-                    <option value="1" <?= $quartos == 1 ? 'selected' : '' ?>>1+ quarto</option>
-                    <option value="2" <?= $quartos == 2 ? 'selected' : '' ?>>2+ quartos</option>
-                    <option value="3" <?= $quartos == 3 ? 'selected' : '' ?>>3+ quartos</option>
-                    <option value="4" <?= $quartos == 4 ? 'selected' : '' ?>>4+ quartos</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label fw-bold"><i class="bi bi-water"></i> Piscina</label>
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="piscina" id="piscina" value="1" <?= $piscina ? 'checked' : '' ?>>
-                    <label class="form-check-label" for="piscina">Sim</label>
-                </div>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label fw-bold"><i class="bi bi-sofa"></i> Mobiliado</label>
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="mobiliado" id="mobiliado" value="1" <?= $mobiliado ? 'checked' : '' ?>>
-                    <label class="form-check-label" for="mobiliado">Sim</label>
-                </div>
-            </div>
-            <div class="col-md-1">
-                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-funnel"></i> Filtrar</button>
-            </div>
-            <div class="col-md-1">
-                <a href="?" class="btn btn-limpar w-100"><i class="bi bi-eraser"></i> Limpar</a>
-            </div>
-        </form>
-    </div>
-
-    <!-- RESULTADOS -->
     <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
-        <?php if (count($imoveis) == 0): ?>
-            <div class="col-12 text-center py-5">
-                <i class="bi bi-search display-1 text-muted"></i>
-                <h3 class="mt-3">Nenhum imóvel encontrado</h3>
-                <p>Tente ajustar os filtros ou <a href="?">limpar a busca</a>.</p>
-            </div>
-        <?php endif; ?>
-
         <?php foreach ($imoveis as $im): 
             $foto = $im['foto_capa'] ? '../../uploads/fotos_imoveis/' . $im['foto_capa'] : 'https://via.placeholder.com/400x250';
             $t_resp = str_replace(["\r", "\n"], ['\r', '\n'], addslashes($im['resposta_rapida'] ?? ''));
@@ -288,101 +128,6 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
                     <h5 class="fw-bold mb-1"><?= htmlspecialchars($im['titulo']) ?></h5>
                     <p class="text-muted small mb-2"><i class="bi bi-geo-alt"></i> <?= htmlspecialchars($im['bairro']) ?></p>
                     <h4 class="text-primary fw-bold mb-3">R$ <?= number_format($im['preco'], 2, ',', '.') ?></h4>
-
-                    <!-- Características do imóvel (grid) -->
-                    <div class="caracteristicas-grid">
-                        <?php if(!empty($im['quartos'])): ?>
-                            <div class="carac-item"><i class="bi bi-door-open"></i> <?= $im['quartos'] ?> quartos</div>
-                        <?php endif; ?>
-                        <?php if(!empty($im['suites']) && $im['suites'] > 0): ?>
-                            <div class="carac-item"><i class="bi bi-suit-heart"></i> <?= $im['suites'] ?> suíte(s)</div>
-                        <?php endif; ?>
-                        <?php if(!empty($im['banheiros']) && $im['banheiros'] > 0): ?>
-                            <div class="carac-item"><i class="bi bi-droplet"></i> <?= $im['banheiros'] ?> banheiros</div>
-                        <?php endif; ?>
-                        <?php if(!empty($im['vagas_garagem'])): ?>
-                            <div class="carac-item"><i class="bi bi-car-front"></i> <?= $im['vagas_garagem'] ?> vaga(s)</div>
-                        <?php endif; ?>
-                        <?php if(!empty($im['area'])): ?>
-                            <div class="carac-item"><i class="bi bi-arrows-fullscreen"></i> <?= number_format($im['area'], 0) ?> m²</div>
-                        <?php endif; ?>
-                        <?php if(!empty($im['andar']) && $im['andar'] > 0): ?>
-                            <div class="carac-item"><i class="bi bi-layers"></i> <?= $im['andar'] ?>º andar</div>
-                        <?php endif; ?>
-                        <?php if(!empty($im['face'])): ?>
-                            <div class="carac-item"><i class="bi bi-brightness-alt-high"></i> Face <?= ucfirst($im['face']) ?></div>
-                        <?php endif; ?>
-                        <?php if(!empty($im['tipo'])): ?>
-                            <div class="carac-item"><i class="bi bi-building"></i> <?= ucfirst($im['tipo']) ?></div>
-                        <?php endif; ?>
-                        <?php if(!empty($im['construtora'])): ?>
-                            <div class="carac-item"><i class="bi bi-tools"></i> <?= htmlspecialchars($im['construtora']) ?></div>
-                        <?php endif; ?>
-                        <?php if(!empty($im['ano_entrega']) && $im['ano_entrega'] > 0): ?>
-                            <div class="carac-item"><i class="bi bi-calendar-check"></i> Entrega <?= $im['ano_entrega'] ?></div>
-                        <?php endif; ?>
-                        <?php if($im['mobiliado'] == 1): ?>
-                            <div class="carac-item"><i class="bi bi-sofa"></i> Mobiliado</div>
-                        <?php endif; ?>
-                        <?php if($im['possui_elevador'] == 1): ?>
-                            <div class="carac-item"><i class="bi bi-arrow-up-short"></i> Elevador</div>
-                        <?php endif; ?>
-                        <?php if($im['possui_moveis_planejados'] == 1): ?>
-                            <div class="carac-item"><i class="bi bi-grid-3x3-gap-fill"></i> Móveis planejados</div>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Valores adicionais -->
-                    <div class="valores-detalhe">
-                        <?php if($im['valor_condominio'] > 0): ?>
-                            <span><i class="bi bi-building"></i> Cond. R$ <?= number_format($im['valor_condominio'], 2, ',', '.') ?></span>
-                        <?php endif; ?>
-                        <?php if($im['valor_iptu'] > 0): ?>
-                            <span><i class="bi bi-receipt"></i> IPTU R$ <?= number_format($im['valor_iptu'], 2, ',', '.') ?></span>
-                        <?php endif; ?>
-                        <?php if($im['valor_sinal'] > 0): ?>
-                            <span><i class="bi bi-currency-exchange"></i> Sinal R$ <?= number_format($im['valor_sinal'], 2, ',', '.') ?></span>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Comodidades -->
-                    <div class="comodidades-badge">
-                        <?php if($im['gas_encanado'] == 1): ?>
-                            <span class="badge-comod"><i class="bi bi-fuel-pump"></i> Gás encanado</span>
-                        <?php endif; ?>
-                        <?php if($im['tem_piscina'] == 1): ?>
-                            <span class="badge-comod"><i class="bi bi-water"></i> Piscina</span>
-                        <?php endif; ?>
-                        <?php if($im['tem_academia'] == 1): ?>
-                            <span class="badge-comod"><i class="bi bi-heart-pulse"></i> Academia</span>
-                        <?php endif; ?>
-                        <?php if($im['tem_salao_festas'] == 1): ?>
-                            <span class="badge-comod"><i class="bi bi-balloon"></i> Salão festas</span>
-                        <?php endif; ?>
-                        <?php if($im['tem_espaco_gourmet'] == 1): ?>
-                            <span class="badge-comod"><i class="bi bi-egg-fried"></i> Espaço gourmet</span>
-                        <?php endif; ?>
-                        <?php if($im['tem_playground'] == 1): ?>
-                            <span class="badge-comod"><i class="bi bi-tree"></i> Playground</span>
-                        <?php endif; ?>
-                        <?php if($im['agua_inclusa_condominio'] == 1): ?>
-                            <span class="badge-comod"><i class="bi bi-droplet"></i> Água inclusa</span>
-                        <?php endif; ?>
-                        <?php if($im['gas_incluso_condominio'] == 1): ?>
-                            <span class="badge-comod"><i class="bi bi-fire"></i> Gás incluso</span>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Aceita -->
-                    <?php if($im['aceita_financiamento'] == 1 || $im['aceita_fgts'] == 1 || $im['aceita_permuta'] == 1 || $im['aceita_consorcio'] == 1): ?>
-                        <div class="aceita-text mb-2">
-                            <i class="bi bi-hand-thumbs-up"></i> Aceita:
-                            <?= $im['aceita_financiamento'] ? ' Financiamento' : '' ?>
-                            <?= $im['aceita_fgts'] ? ' FGTS' : '' ?>
-                            <?= $im['aceita_permuta'] ? ' Permuta' : '' ?>
-                            <?= $im['aceita_consorcio'] ? ' Consórcio' : '' ?>
-                        </div>
-                    <?php endif; ?>
 
                     <?php if (!empty($im['nomes_parceiros'])): ?>
                         <div class="badge-parceiro p-2 rounded mb-3">
@@ -443,7 +188,7 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
     </div>
 </div>
 
-<!-- MODAIS (mesmos do código original) -->
+<!-- INCLUSÃO DOS MODAIS (DESPESAS, TEXTO, AGENDAMENTO) -->
 <div class="modal fade" id="modalDespesas" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -500,25 +245,6 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
 </div>
 
 <script>
-// Formatação de moeda para o campo preço_referência
-document.querySelectorAll('.money').forEach(el => {
-    el.addEventListener('input', function(e) {
-        let value = this.value.replace(/\D/g, '');
-        if (value) {
-            value = (parseInt(value) / 100).toFixed(2);
-            value = value.replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-            this.value = 'R$ ' + value;
-        } else {
-            this.value = '';
-        }
-    });
-    // Ao enviar o formulário, remover a máscara para enviar número puro
-    el.closest('form')?.addEventListener('submit', function() {
-        let raw = el.value.replace(/[^\d,]/g, '').replace(',', '.');
-        el.value = parseFloat(raw) || 0;
-    });
-});
-
 let textoAtual = "";
 function atualizarContagem() {
     let selecionados = document.querySelectorAll('.check-imovel:checked').length;
@@ -540,3 +266,4 @@ function abrirModalAgendamento(id, tit) { document.getElementById('modal_imovel_
 </script>
 
 <?php require_once '../../includes/footer.php'; ?>
+<!-- antes caracteristicas -->

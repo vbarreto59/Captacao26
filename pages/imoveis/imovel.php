@@ -473,11 +473,11 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
                     
                     <a href="https://wa.me/5581986755592?text=Olá Valter! Tenho interesse no imóvel <?= urlencode($imovel['titulo']) ?>" 
                        target="_blank" class="btn btn-whatsapp-custom w-100 mb-3">
-                        <i class="bi bi-whatsapp me-2"></i> Falar com corretor
+                        <i class="bi bi-whatsapp me-2"></i> Falar com Valter
                     </a>
                     
                     <div class="text-center mt-3 pt-2 border-top">
-                        <img src="../../img/valter-perfil.jpg" alt="Valter Barreto" class="rounded-circle shadow-sm mb-2" width="80" height="80" style="object-fit: cover;">
+                        <img src="valter-perfil.JPG" alt="Valter Barreto" class="rounded-circle shadow-sm mb-2" width="80" height="80" style="object-fit: cover;">
                         <h5 class="fw-bold mb-0">Valter Barreto</h5>
                         <p class="text-muted small">CRECI-PE 22003 | Corretor</p>
                         <div class="d-flex justify-content-center gap-3">
