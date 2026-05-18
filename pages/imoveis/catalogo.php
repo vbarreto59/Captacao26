@@ -41,8 +41,8 @@ $sql = "
         i.aceita_consorcio,
         (SELECT caminho FROM fotos_imoveis WHERE imovel_id = i.id ORDER BY capa DESC, ordem ASC, id ASC LIMIT 1) AS foto_capa
     FROM imoveis i 
-    WHERE i.deleted_at IS NULL AND i.data_venda IS NULL
-    ORDER BY i.created_at DESC
+    WHERE i.deleted_at IS NULL AND i.data_venda IS NULL AND categoria_registro = 'oficial'
+    ORDER BY i.preco 
 ";
 
 $stmt = $conn->prepare($sql);

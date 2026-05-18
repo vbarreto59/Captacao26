@@ -21,10 +21,8 @@ if (!defined('BASE_URL')) {
     <link href="<?= BASE_URL ?>/css/style.css" rel="stylesheet">
 
     <style>
-        /* ===== ESTILIZAÇÃO DE CENTRALIZAÇÃO E LARGURA ===== */
         body { background: #f4f6f9; }
 
-        /* Limita a largura do site para não espalhar em monitores grandes */
         .limit-container {
             max-width: 1300px;
             margin: 0 auto;
@@ -41,18 +39,27 @@ if (!defined('BASE_URL')) {
             z-index: 1000;
         }
 
-        /* Estilo Desktop (Centralizado) */
         @media (min-width: 992px) {
             .navbar-top-row {
                 display: flex;
                 align-items: center;
-                justify-content: center; /* CENTRALIZA TUDO */
-                gap: 30px;
+                justify-content: center;
+                gap: 20px;
+                padding-bottom: 5px;
+            }
+
+            /* Nova linha para o bloco de corretores */
+            .navbar-bottom-row {
+                display: flex;
+                justify-content: center;
+                padding-top: 5px;
+                border-top: 1px solid #f1f1f1;
+                margin-top: 5px;
             }
 
             .nav-scroll {
                 display: flex;
-                gap: 10px;
+                gap: 8px;
                 align-items: center;
             }
 
@@ -60,14 +67,14 @@ if (!defined('BASE_URL')) {
                 display: flex;
                 align-items: center;
                 gap: 4px;
-                padding: 4px 12px;
+                padding: 4px 10px;
                 border-radius: 50px;
                 background: #f8f9fa;
                 border: 1px solid #ececec;
             }
 
             .label-group {
-                font-size: 0.65rem;
+                font-size: 0.62rem;
                 font-weight: 800;
                 text-transform: uppercase;
                 color: #888;
@@ -77,10 +84,10 @@ if (!defined('BASE_URL')) {
             }
 
             .nav-link-custom {
-                font-size: 0.82rem;
+                font-size: 0.8rem;
                 text-decoration: none;
                 color: #333 !important;
-                padding: 3px 7px;
+                padding: 3px 6px;
                 border-radius: 4px;
                 white-space: nowrap;
             }
@@ -91,17 +98,19 @@ if (!defined('BASE_URL')) {
             .group-leads { background-color: #e8f5e9 !important; border-color: #c8e6c9 !important; }
             .group-imoveis { background-color: #e3f2fd !important; border-color: #bbdefb !important; }
             .group-agenda { background-color: #fff3e0 !important; border-color: #ffe0b2 !important; }
+            .group-corretores { background-color: #e0f2f1 !important; border-color: #b2dfdb !important; }
             .group-mapa { background-color: #f3e5f5 !important; border-color: #e1bee7 !important; }
         }
 
-        /* Estilo Mobile (Empilhado) */
         @media (max-width: 991.98px) {
             .navbar-top-row { display: flex; justify-content: space-between; align-items: center; padding: 0 15px; }
             .nav-scroll { display: flex; flex-direction: column; gap: 10px; padding: 15px; }
+            .navbar-bottom-row { display: block; } /* No mobile mantém fluxo normal */
             .nav-group { 
                 display: flex; flex-wrap: wrap; gap: 8px; padding: 15px; 
                 background: #fff; border-radius: 12px; border-left: 4px solid #ddd;
                 box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                margin-bottom: 10px;
             }
             .label-group { width: 100%; font-size: 0.75rem; font-weight: bold; color: #666; margin-bottom: 5px; }
             .navbar-toggler-custom { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 5px 12px; }
@@ -114,63 +123,63 @@ if (!defined('BASE_URL')) {
 
 <nav class="navbar-mobile">
     <div class="limit-container">
+        <!-- LINHA 1: LOGO E GRUPOS PRINCIPAIS -->
         <div class="navbar-top-row">
-            <!-- LOGO -->
             <a class="brand-mobile" href="<?= BASE_URL ?>/dash.php">
                 <i class="bi bi-building"></i> Captação
             </a>
             
-            <!-- MENU COMPLETO -->
             <div class="navbar-collapse-mobile" id="mobileNavMenu">
                 <div class="nav-scroll">
-                    
-                    <!-- HOME -->
                     <div class="nav-group group-home">
                         <span class="label-group">Início</span>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/dash.php"><i class="bi bi-house-door"></i> Dash</a>
                     </div>
                     
-                    <!-- LEADS (TODOS OS LINKS) -->
                     <div class="nav-group group-leads">
                         <span class="label-group">Leads</span>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads.php">Lista</a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_kanban.php">Kanban</a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_funil.php">Funil</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/favoritos.php" title="Favoritos"><i class="bi bi-star-fill text-warning"></i></a>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/favoritos.php"><i class="bi bi-star-fill text-warning"></i></a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_ppasso.php">LPP</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/contatos_hoje.php">Hoje</a>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/contatos_hoje.php" target="_blank">Hoje</a>
+                        
                     </div>
                     
-                    <!-- IMÓVEIS (TODOS OS LINKS) -->
                     <div class="nav-group group-imoveis">
                         <span class="label-group">Imóveis</span>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/list.php">Lista</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/catalogo.php">Catálogo</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/proprietarios/list.php">Proprietários</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/imprimir_ficha.php">Ficha</a>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/catalogo.php" target="_bla">Catálogo</a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/listagem_imoveis1.php">Invent.</a>
                     </div>
                     
-                    <!-- VISITAS (TODOS OS LINKS) -->
                     <div class="nav-group group-agenda">
                         <span class="label-group">Visitas</span>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/visitas/agenda.php">Agenda</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/visitas/list.php">Lista</a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/visitas/calendario.php">Calendário</a>
                     </div>
 
-                    <!-- FERRAMENTAS -->
                     <div class="nav-group group-mapa">
                         <span class="label-group">Ferramentas</span>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/map/index.php"><i class="bi bi-geo-alt"></i> Mapa</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/menu.php">Parcerias</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/parceiros_view.php">Compartilhar</a>
+                    </div>
+
+                    <!-- LINHA 2 (DESKTOP) / CONTINUAÇÃO (MOBILE) -->
+                    <div class="navbar-bottom-row">
+                        <div class="nav-group group-corretores">
+                            <span class="label-group">Corretores</span>
+                            <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/corretores.php">Cad. Corretores</a>
+                            <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/form_triagem.php">Cad. Imóveis Parc.</a>
+                            <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/corretores_parceiros.php"> Parc. x Imoveis</a>
+                            <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/listar_todos_imoveis.php"> Todos Imoveis</a>
+                            
+                        </div>
                     </div>
 
                 </div>
             </div>
 
-            <!-- SAIR -->
             <div class="d-flex gap-2 align-items-center">
                 <a class="btn btn-outline-danger btn-sm d-none d-lg-inline-flex" href="<?= BASE_URL ?>/logout.php">
                     <i class="bi bi-box-arrow-right"></i> Sair
@@ -184,9 +193,9 @@ if (!defined('BASE_URL')) {
     </div>
 </nav>
 
-<!-- INÍCIO DO CONTEÚDO CENTRALIZADO -->
 <div class="limit-container mt-3 pb-5">
-    <!-- Aqui entra o conteúdo das suas outras páginas -->
+    <!-- Conteúdo da página -->
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>

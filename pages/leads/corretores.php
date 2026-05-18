@@ -48,8 +48,15 @@ if (isset($_POST['action'])) {
     exit;
 }
 
-// Consulta Principal
-$corretores = $conn->query("SELECT * FROM corretores ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC);
+// ==========================================
+// CONSULTA PRINCIPAL COM CONTTAGEM DE IMÓVEIS
+// ==========================================
+$sql = "SELECT c.*, COUNT(i.id) as total_imoveis 
+        FROM corretores c 
+        LEFT JOIN imoveis i ON i.corretor_id = c.id 
+        GROUP BY c.id 
+        ORDER BY c.nome ASC";
+$corretores = $conn->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 
 require_once '../../includes/header.php';
 ?>
@@ -64,6 +71,17 @@ require_once '../../includes/header.php';
             <i class="bi bi-plus-lg"></i> Novo Corretor
         </button>
     </div>
+    <!-- Header e Mensagens -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+
+    <div class="d-flex gap-2">
+        <!-- Botão para Corretores Parceiros -->
+        <a href="../imoveis/corretores_parceiros.php" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-people-fill"></i> Gerenciar Corretores
+        </a>
+
+    </div>
+</div>
 
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">
@@ -74,48 +92,55 @@ require_once '../../includes/header.php';
                             <th class="ps-3">Código</th>
                             <th>Nome</th>
                             <th>CRECI</th>
+                            <th class="text-center">Imóveis</th>
                             <th>Contato</th>
                             <th class="text-center">Status</th>
                             <th class="text-end pe-3">Ações</th>
                         </tr>
                     </thead>
-<tbody>
-    <?php foreach ($corretores as $c): ?>
-    <tr>
-        <td class="ps-3">
-            <!-- Link no próprio código -->
-            <a href="lista_leads_corretores.php?status=<?= $c['codigo_acesso'] ?>" target="_blank" class="text-decoration-none">
-                <span class="badge bg-secondary" title="Clique para ver a página do corretor">
-                    <?= htmlspecialchars($c['codigo_acesso']) ?> <i class="bi bi-box-arrow-up-right ms-1" style="font-size: 0.7rem;"></i>
-                </span>
-            </a>
-        </td>
-        <td>
-            <div class="fw-bold text-dark"><?= htmlspecialchars($c['nome']) ?></div>
-            <div class="text-muted small"><?= htmlspecialchars($c['email']) ?></div>
-        </td>
-        <td><span class="badge bg-light text-dark border"><?= htmlspecialchars($c['creci']) ?></span></td>
-        <td><?= htmlspecialchars($c['telefone']) ?></td>
-        <td class="text-center">
-            <span class="badge <?= $c['status'] == 'Ativo' ? 'bg-success' : 'bg-danger' ?>">
-                <?= $c['status'] ?>
-            </span>
-        </td>
-        <td class="text-end pe-3">
-            <!-- Novo botão: Visualizar Leads do Corretor -->
-            <a href="lista_leads_corretores.php?status=<?= $c['codigo_acesso'] ?>" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver lista de leads deste corretor">
-                <i class="bi bi-eye"></i>
-            </a>
-            <button class="btn btn-sm btn-outline-secondary" onclick="editarCorretor(<?= $c['id'] ?>)" title="Editar">
-                <i class="bi bi-pencil"></i>
-            </button>
-            <button class="btn btn-sm btn-outline-danger" onclick="excluirCorretor(<?= $c['id'] ?>)" title="Excluir">
-                <i class="bi bi-trash"></i>
-            </button>
-        </td>
-    </tr>
-    <?php endforeach; ?>
-</tbody>
+                    <tbody>
+                        <?php foreach ($corretores as $c): ?>
+                        <tr>
+                            <td class="ps-3">
+                                <a href="lista_leads_corretores.php?status=<?= $c['codigo_acesso'] ?>" target="_blank" class="text-decoration-none">
+                                    <span class="badge bg-secondary" title="Clique para ver a página do corretor">
+                                        <?= htmlspecialchars($c['codigo_acesso']) ?> <i class="bi bi-box-arrow-up-right ms-1" style="font-size: 0.7rem;"></i>
+                                    </span>
+                                </a>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-dark"><?= htmlspecialchars($c['nome']) ?></div>
+                                <div class="text-muted small"><?= htmlspecialchars($c['email']) ?></div>
+                            </td>
+                            <td><span class="badge bg-light text-dark border"><?= htmlspecialchars($c['creci']) ?></span></td>
+                            
+                            <!-- Quantidade de Imóveis -->
+                            <td class="text-center">
+                                <span class="badge rounded-pill <?= $c['total_imoveis'] > 0 ? 'bg-info text-dark' : 'bg-light text-muted border' ?>">
+                                    <?= $c['total_imoveis'] ?>
+                                </span>
+                            </td>
+
+                            <td><?= htmlspecialchars($c['telefone']) ?></td>
+                            <td class="text-center">
+                                <span class="badge <?= $c['status'] == 'Ativo' ? 'bg-success' : 'bg-danger' ?>">
+                                    <?= $c['status'] ?>
+                                </span>
+                            </td>
+                            <td class="text-end pe-3">
+                                <a href="lista_leads_corretores.php?status=<?= $c['codigo_acesso'] ?>" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver lista de leads deste corretor">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="editarCorretor(<?= $c['id'] ?>)" title="Editar">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="excluirCorretor(<?= $c['id'] ?>)" title="Excluir">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -141,8 +166,7 @@ require_once '../../includes/header.php';
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Código de Acesso</label>
-                            <input type="text" class="form-control" name="codigo_acesso" maxlength="4" placeholder="4 letras maiúsculas" pattern="[A-Za-z]{4}" title="Digite exatamente 4 letras" style="text-transform: uppercase;" oninput="this.value = this.value.toUpperCase()">
-                            <small class="text-muted">Exatamente 4 letras (será salvo em maiúsculo).</small>
+                            <input type="text" class="form-control" name="codigo_acesso" maxlength="4" placeholder="4 letras" style="text-transform: uppercase;" oninput="this.value = this.value.toUpperCase()">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">CRECI</label>
@@ -159,7 +183,7 @@ require_once '../../includes/header.php';
                             <label class="form-label fw-semibold">Telefone/WhatsApp</label>
                             <input type="text" class="form-control" name="telefone">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <label class="form-label fw-semibold">E-mail</label>
                             <input type="email" class="form-control" name="email">
                         </div>
@@ -177,35 +201,21 @@ require_once '../../includes/header.php';
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 $(document).ready(function() {
-    let modalCorretor;
-    try {
-        const modalElement = document.getElementById('modalCorretor');
-        if (modalElement) {
-            modalCorretor = new bootstrap.Modal(modalElement);
-        } else {
-            console.error('Modal não encontrado!');
-        }
-    } catch(e) {
-        console.error('Bootstrap não carregado:', e);
-    }
+    let modalCorretor = new bootstrap.Modal(document.getElementById('modalCorretor'));
 
     window.novoCorretor = function() {
-        console.log('novoCorretor chamado');
         $('#formCorretor')[0].reset();
         $('#corretor_id').val('');
-        // Gera um código aleatório de 4 letras (exemplo: ABCD)
-        const letras = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // sem letras ambíguas (I, O)
+        const letras = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
         let codigo = '';
         for (let i = 0; i < 4; i++) {
             codigo += letras.charAt(Math.floor(Math.random() * letras.length));
         }
         $('[name="codigo_acesso"]').val(codigo);
-        if (modalCorretor) modalCorretor.show();
-        else $('#modalCorretor').modal('show');
+        modalCorretor.show();
     };
 
     window.editarCorretor = function(id) {
-        console.log('editarCorretor', id);
         $.post('corretores.php', { action: 'get', id: id }, function(data) {
             if (data) {
                 $('[name="id"]').val(data.id);
@@ -215,41 +225,27 @@ $(document).ready(function() {
                 $('[name="telefone"]').val(data.telefone);
                 $('[name="email"]').val(data.email);
                 $('[name="status"]').val(data.status);
-                if (modalCorretor) modalCorretor.show();
-                else $('#modalCorretor').modal('show');
+                modalCorretor.show();
             }
-        }, 'json').fail(function() {
-            alert('Erro ao carregar dados do corretor.');
-        });
+        }, 'json');
     };
 
     window.excluirCorretor = function(id) {
         if (confirm('Deseja realmente excluir este corretor?')) {
             $.post('corretores.php', { action: 'delete', id: id }, function(res) {
                 if (res.status === 'success') location.reload();
-                else alert('Erro ao excluir.');
             }, 'json');
         }
     };
 
     $('#formCorretor').on('submit', function(e) {
         e.preventDefault();
-        const codigo = $('[name="codigo_acesso"]').val().trim().toUpperCase();
-        if (!/^[A-Z]{4}$/.test(codigo)) {
-            alert('O código de acesso deve conter exatamente 4 letras (A-Z).');
-            $('[name="codigo_acesso"]').focus();
-            return;
-        }
-        // Força maiúsculo antes de enviar
-        $('[name="codigo_acesso"]').val(codigo);
-        
         $.post('corretores.php', $(this).serialize(), function(res) {
             if (res.status === 'success') location.reload();
-            else alert(res.message || 'Erro ao salvar. Verifique os dados.');
-        }, 'json').fail(function() {
-            alert('Erro de comunicação com o servidor.');
-        });
+            else alert(res.message || 'Erro ao salvar.');
+        }, 'json');
     });
 });
 </script>
-<!--  -->
+
+<?php require_once '../../includes/footer.php'; ?>

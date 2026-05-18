@@ -90,8 +90,9 @@ if ($mobiliado) {
 $total_leads_absoluto = $conn->query("SELECT COUNT(*) FROM leads")->fetchColumn();
 $leads_list = $conn->query("SELECT id, nome FROM leads ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-// 2. CONSULTA PRINCIPAL (IMÓVEIS + FOTO + FINANCEIRO + PARCEIROS)
+// 2. CONSULTA PRINCIPAL (IMÓVEIS + FOTO + FINANCEIRO + PARCEIROS + CORRETOR TITULAR)
 $sql = "SELECT i.*, p.nome as nome_proprietario,
+        c_titular.nome as nome_corretor_titular,
         (SELECT caminho FROM fotos_imoveis WHERE imovel_id = i.id ORDER BY capa DESC, id ASC LIMIT 1) AS foto_capa,
         (SELECT COUNT(*) FROM visitas WHERE imovel_id = i.id) AS total_visitas_imovel,
         (SELECT SUM(valor) FROM despesas WHERE imovel_id = i.id) AS total_despesas_imovel,
@@ -101,7 +102,9 @@ $sql = "SELECT i.*, p.nome as nome_proprietario,
          WHERE ip.imovel_id = i.id) AS nomes_parceiros
         FROM imoveis i 
         LEFT JOIN proprietarios p ON i.proprietario_id = p.id 
-        $where 
+        LEFT JOIN corretores c_titular ON i.corretor_id = c_titular.id
+        WHERE i.categoria_registro = 'oficial' 
+        AND i.deleted_at IS NULL
         ORDER BY i.created_at DESC";
 
 $stmt = $conn->prepare($sql);
@@ -200,6 +203,17 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
         color: #6c757d;
         margin-top: 4px;
     }
+    /* Estilo para o corretor titular no card */
+    .corretor-titular {
+        font-size: 0.8rem;
+        color: #0d6efd;
+        background: #e7f1ff;
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 20px;
+        margin-top: 5px;
+        margin-bottom: 8px;
+    }
 </style>
 
 <div class="container-fluid pb-5">
@@ -287,6 +301,13 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
                 <div class="card-body d-flex flex-column">
                     <h5 class="fw-bold mb-1"><?= htmlspecialchars($im['titulo']) ?></h5>
                     <p class="text-muted small mb-2"><i class="bi bi-geo-alt"></i> <?= htmlspecialchars($im['bairro']) ?></p>
+                    
+                    <!-- EXIBIÇÃO DO CORRETOR TITULAR -->
+                    <div class="corretor-titular">
+                        <i class="bi bi-person-badge"></i> Corretor: 
+                        <?= htmlspecialchars($im['nome_corretor_titular'] ?? 'Não definido') ?>
+                    </div>
+
                     <h4 class="text-primary fw-bold mb-3">R$ <?= number_format($im['preco'], 2, ',', '.') ?></h4>
 
                     <!-- Características do imóvel (grid) -->
