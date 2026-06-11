@@ -24,8 +24,8 @@ try {
              </div>");
     }
 
-    // 2. Buscar todos os imóveis do corretor, ordenados por preço crescente
-    $stmtI = $conn->prepare("SELECT * FROM imoveis WHERE corretor_id = ? ORDER BY preco ASC");
+    // 2. Buscar todos os imóveis do corretor, ordenados por preço crescente (incluindo excluídos para listagem interna do parceiro)
+    $stmtI = $conn->prepare("SELECT * FROM imoveis WHERE corretor_id = ? AND deleted_at IS NULL ORDER BY preco ASC");
     $stmtI->execute([$corretor['id']]);
     $imoveis = $stmtI->fetchAll(PDO::FETCH_ASSOC);
 
@@ -58,9 +58,9 @@ sort($quartos_opcoes);
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .card-property { border: none; border-radius: 12px; transition: 0.3s; background: #fff; height: 100%; display: flex; flex-direction: column; }
+        .card-property { border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; transition: 0.3s; background: #fff; height: 100%; display: flex; flex-direction: column; }
         .card-property:hover { transform: translateY(-5px); box-shadow: 0 12px 25px rgba(0,0,0,0.1); }
-        .status-badge { position: absolute; top: 15px; right: 15px; z-index: 10; display: flex; gap: 6px; }
+        .status-badge { position: absolute; top: 15px; right: 15px; z-index: 10; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
         .price { font-size: 1.4rem; color: #2c3e50; font-weight: 800; }
         .detail-icon { display: inline-flex; align-items: center; gap: 4px; background: #f0f2f5; padding: 4px 8px; border-radius: 20px; font-size: 0.75rem; }
         .amenities i, .info-row i { width: 20px; color: #0d6efd; }
@@ -68,8 +68,13 @@ sort($quartos_opcoes);
         .card-body { flex: 1; }
         .divider { border-top: 1px dashed #dee2e6; margin: 0.5rem 0; }
         .filter-bar { background: white; border-radius: 16px; padding: 1.25rem; margin-bottom: 2rem; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        /* Badge Laranja customizado */
+        
+        /* Modificadores customizados */
         .badge-orange { background-color: #fd7e14 !important; color: #ffffff !important; }
+        
+        /* Estilo sutil para o card excluído */
+        .card-excluido { opacity: 0.75; border: 1px solid #dc3545 !important; background-color: #fffdfd; }
+        .card-excluido:hover { box-shadow: 0 12px 25px rgba(220, 53, 69, 0.15); }
     </style>
 </head>
 <body>
@@ -138,21 +143,25 @@ sort($quartos_opcoes);
     <div class="row g-4" id="cardsContainer">
         <?php foreach ($imoveis as $i): 
             $idFormatado = str_pad($i['id'], 3, '0', STR_PAD_LEFT);
+            $estaExcluido = !empty($i['deleted_at']);
         ?>
             <div class="col-md-6 col-lg-4 card-item" 
                  data-tipo="<?= htmlspecialchars($i['tipo']) ?>" 
                  data-bairro="<?= htmlspecialchars($i['bairro']) ?>" 
                  data-quartos="<?= $i['quartos'] ?>">
-                <div class="card card-property shadow-sm position-relative">
+                
+                <!-- Injeta a classe CSS "card-excluido" se o imóvel estiver deletado logicamente -->
+                <div class="card card-property shadow-sm position-relative <?= $estaExcluido ? 'card-excluido' : '' ?>">
+                    
                     <div class="status-badge">
+                        <!-- Badge Vermelho de Exclusão (Aparece no topo direito do Card) -->
+                        <?php if ($estaExcluido): ?>
+                            <span class="badge bg-danger text-uppercase"><i class="bi bi-trash-fill"></i> Excluído</span>
+                        <?php endif; ?>
+
                         <span class="badge bg-dark text-uppercase"><?= htmlspecialchars($i['tipo']) ?></span>
                         
-                        <!-- Badges com cores alternadas de acordo com o status -->
-                        <?php if($i['categoria_registro'] == 'triagem'): ?>
-                            <span class="badge badge-orange text-uppercase">Triagem</span>
-                        <?php elseif($i['categoria_registro'] == 'oficial'): ?>
-                            <span class="badge bg-primary text-uppercase">Oficial</span>
-                        <?php endif; ?>
+
                     </div>
                     
                     <div class="card-body pt-4">
@@ -241,8 +250,8 @@ sort($quartos_opcoes);
 
                         <!-- Botões de ação: Editar e Ver Detalhes -->
                         <div class="mt-4 d-flex gap-2">
-                            <a href="editar_imovel_parceiro.php?pin=<?= urlencode($pin) ?>&id=<?= $i['id'] ?>" class="btn btn-outline-primary flex-fill" target="_blank">
-                                <i class="bi bi-pencil"></i> Editar
+                            <a href="editar_imovel_parceiro.php?pin=<?= urlencode($pin) ?>&id=<?= $i['id'] ?>" class="btn <?= $estaExcluido ? 'btn-outline-danger' : 'btn-outline-primary' ?> flex-fill" target="_blank">
+                                <i class="bi bi-pencil"></i> <?= $estaExcluido ? 'Ver / Restaurar' : 'Editar' ?>
                             </a>
                             <?php if(!empty($i['link_site'])): ?>
                                 <a href="<?= htmlspecialchars($i['link_site']) ?>" target="_blank" class="btn btn-dark flex-fill">

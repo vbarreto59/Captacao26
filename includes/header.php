@@ -24,8 +24,10 @@ if (!defined('BASE_URL')) {
         body { background: #f4f6f9; }
 
         .limit-container {
-            max-width: 1300px;
+            max-width: 1400px;
             margin: 0 auto;
+            padding-left: 15px;
+            padding-right: 15px;
             width: 100%;
         }
         
@@ -43,12 +45,11 @@ if (!defined('BASE_URL')) {
             .navbar-top-row {
                 display: flex;
                 align-items: center;
-                justify-content: center;
+                justify-content: space-between;
                 gap: 20px;
                 padding-bottom: 5px;
             }
 
-            /* Nova linha para o bloco de corretores */
             .navbar-bottom-row {
                 display: flex;
                 justify-content: center;
@@ -61,6 +62,7 @@ if (!defined('BASE_URL')) {
                 display: flex;
                 gap: 8px;
                 align-items: center;
+                flex-wrap: wrap;
             }
 
             .nav-group {
@@ -103,9 +105,31 @@ if (!defined('BASE_URL')) {
         }
 
         @media (max-width: 991.98px) {
-            .navbar-top-row { display: flex; justify-content: space-between; align-items: center; padding: 0 15px; }
-            .nav-scroll { display: flex; flex-direction: column; gap: 10px; padding: 15px; }
-            .navbar-bottom-row { display: block; } /* No mobile mantém fluxo normal */
+            .navbar-top-row { 
+                display: flex; 
+                flex-wrap: wrap; /* Permite que o menu quebre para a linha de baixo */
+                justify-content: space-between; 
+                align-items: center; 
+                padding: 0 5px; 
+            }
+            
+            /* CORREÇÃO: Inicializa o menu mobile oculto e define largura total */
+            .navbar-collapse-mobile {
+                display: none;
+                width: 100%;
+                order: 3; /* Garante que o menu expandido fique abaixo do logo e do botão */
+                max-height: 75vh;
+                overflow-y: auto; /* Adiciona scroll se os itens forem maiores que a tela */
+            }
+            
+            /* Classe utilitária ativada via JavaScript */
+            .navbar-collapse-mobile.show {
+                display: block;
+            }
+
+            .nav-scroll { display: flex; flex-direction: column; gap: 10px; padding: 15px 0; }
+            .navbar-bottom-row { display: block; }
+            
             .nav-group { 
                 display: flex; flex-wrap: wrap; gap: 8px; padding: 15px; 
                 background: #fff; border-radius: 12px; border-left: 4px solid #ddd;
@@ -129,29 +153,56 @@ if (!defined('BASE_URL')) {
                 <i class="bi bi-building"></i> Captação
             </a>
             
+            <!-- Botões de Ação na Direita -->
+            <div class="d-flex gap-2 align-items-center order-lg-2">
+                <a class="btn btn-outline-danger btn-sm d-none d-lg-inline-flex" href="<?= BASE_URL ?>/logout.php">
+                    <i class="bi bi-box-arrow-right"></i> Sair
+                </a>
+                <button class="navbar-toggler-custom d-lg-none" type="button" id="mobileMenuToggle">
+                    <i class="bi bi-list"></i> Menu
+                </button>
+            </div>
+            
+            <!-- Menu do Sistema (Retraído no Mobile por padrão) -->
             <div class="navbar-collapse-mobile" id="mobileNavMenu">
                 <div class="nav-scroll">
                     <div class="nav-group group-home">
                         <span class="label-group">Início</span>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/dash.php"><i class="bi bi-house-door"></i> Dash</a>
                     </div>
+
+                    <div class="nav-group group-imoveis">
+                        <span class="label-group">Imóveis</span>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/list.php">Lista</a>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/catalogo.php" target="_blank">Catálogo</a>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/listagem_imoveis1.php">Invent.</a>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/proprietarios/list.php">Proprietários</a>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/insert_json.php">Json</a>
+
+                        
+
+                    </div>                    
                     
                     <div class="nav-group group-leads">
                         <span class="label-group">Leads</span>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads.php">Lista</a>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/parceiros_obs.php" target="_blank">Leads 1</a
+                        >
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads3.php">Leads 2</a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_kanban.php">Kanban</a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_funil.php">Funil</a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/favoritos.php"><i class="bi bi-star-fill text-warning"></i></a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_ppasso.php">LPP</a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/contatos_hoje.php" target="_blank">Hoje</a>
-                        
-                    </div>
-                    
-                    <div class="nav-group group-imoveis">
-                        <span class="label-group">Imóveis</span>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/list.php">Lista</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/catalogo.php" target="_bla">Catálogo</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/listagem_imoveis1.php">Invent.</a>
+
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/parceiros_view.php" target="_blank">Resumo</a
+                        >
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/parceiros_obs.php" target="_blank">ResObs</a
+                        >
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/parceiros_ccolar.php" target="_blank">CopiarColar</a
+                        >
+
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/lead_imovel_match.php" target="_blank">Match</a>
+
                     </div>
                     
                     <div class="nav-group group-agenda">
@@ -173,51 +224,44 @@ if (!defined('BASE_URL')) {
                             <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/form_triagem.php">Cad. Imóveis Parc.</a>
                             <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/corretores_parceiros.php"> Parc. x Imoveis</a>
                             <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/listar_todos_imoveis.php"> Todos Imoveis</a>
-                            
                         </div>
                     </div>
 
-                </div>
-            </div>
+                    <!-- Botão Sair visível apenas no menu mobile -->
+                    <div class="d-grid d-lg-none mt-2">
+                        <a class="btn btn-danger" href="<?= BASE_URL ?>/logout.php">
+                            <i class="bi bi-box-arrow-right"></i> Sair do Sistema
+                        </a>
+                    </div>
 
-            <div class="d-flex gap-2 align-items-center">
-                <a class="btn btn-outline-danger btn-sm d-none d-lg-inline-flex" href="<?= BASE_URL ?>/logout.php">
-                    <i class="bi bi-box-arrow-right"></i> Sair
-                </a>
-                <button class="navbar-toggler-custom d-lg-none" type="button" id="mobileMenuToggle">
-                    <i class="bi bi-list"></i> Menu
-                </button>
+                </div>
             </div>
 
         </div>
     </div>
 </nav>
 
-<div class="limit-container mt-3 pb-5">
-    <!-- Conteúdo da página -->
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- JavaScript para controlar a abertura/fechamento do menu mobile -->
 <script>
-    (function() {
-        const btn = document.getElementById('mobileMenuToggle');
-        const menu = document.getElementById('mobileNavMenu');
-        
-        btn?.addEventListener('click', () => {
-            const isVisible = menu.style.display === 'block';
-            menu.style.display = isVisible ? 'none' : 'block';
-        });
+document.addEventListener('DOMContentLoaded', function() {
+    const menuToggle = document.getElementById('mobileMenuToggle');
+    const mobileNavMenu = document.getElementById('mobileNavMenu');
 
-        window.addEventListener('resize', () => {
-            if (window.innerWidth >= 992) {
-                menu.style.display = 'block';
+    if (menuToggle && mobileNavMenu) {
+        menuToggle.addEventListener('click', function() {
+            mobileNavMenu.classList.toggle('show');
+            
+            // Opcional: Altera o ícone do botão de menu para um "X" quando aberto
+            const icon = menuToggle.querySelector('i');
+            if (mobileNavMenu.classList.contains('show')) {
+                icon.className = 'bi bi-x-lg';
             } else {
-                menu.style.display = 'none';
+                icon.className = 'bi bi-list';
             }
         });
-
-        if (window.innerWidth >= 992) menu.style.display = 'block';
-    })();
+    }
+});
 </script>
-</body>
-</html>
+
+<!-- Div de abertura que envelopará o conteúdo das suas páginas -->
+<div class="limit-container mt-3 pb-5">

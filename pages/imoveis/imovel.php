@@ -34,6 +34,20 @@ $status_map = [
     'suspenso' => ['label' => 'Suspenso',   'class' => 'bg-warning text-dark']
 ];
 $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['status']), 'class' => 'bg-secondary'];
+
+// Lógica para montar o texto de inclusão do condomínio com cores de destaque
+$inclusos = [];
+if (!empty($imovel['agua_inclusa_condominio']) && $imovel['agua_inclusa_condominio'] == 1) { 
+    $inclusos[] = '<span class="text-primary fw-bold">Água</span>'; 
+}
+if (!empty($imovel['gas_incluso_condominio']) && $imovel['gas_incluso_condominio'] == 1) { 
+    $inclusos[] = '<span class="text-warning-dark fw-bold">Gás</span>'; 
+}
+
+$textoInclusos = '';
+if (!empty($inclusos)) {
+    $textoInclusos = ' <small class="text-muted" style="font-size: 0.8rem;">(' . implode(' e ', $inclusos) . ' inclusos)</small>';
+}
 ?>
 
 <!DOCTYPE html>
@@ -56,6 +70,9 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
     <style>
         * { font-family: 'Inter', sans-serif; }
         body { background: #f4f7fc; }
+        
+        /* Classe customizada para o Gás ter um tom de laranja/amarelo mais visível no fundo branco */
+        .text-warning-dark { color: #e67e22 !important; }
         
         /* Cards modernos */
         .card-moderno {
@@ -273,12 +290,12 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
                     <?php endif; ?>
                 </div>
 
-                <!-- DIFERENCIAIS & COMODIDADES (AGORA COM ÁGUA/GÁS INCLUSOS) -->
+                <!-- DIFERENCIAIS & COMODIDADES -->
                 <div class="mb-4">
                     <h3 class="section-title"><i class="bi bi-stars"></i> Diferenciais & Comodidades</h3>
                     <div class="d-flex flex-wrap gap-2 mt-3">
                         <?php
-                        // Lista de diferenciais (somente os que devem ser exibidos quando TRUE)
+                        // Lista de diferenciais
                         $itens = [
                             'tem_piscina' => ['Piscina', 'bi-water'],
                             'tem_academia' => ['Academia', 'bi-dumbbell'],
@@ -289,12 +306,10 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
                             'possui_moveis_planejados' => ['Móveis Planejados', 'bi-grid-3x3-gap'],
                             'gas_encanado' => ['Gás Encanado', 'bi-fire'],
                             'mobiliado' => ['Mobiliado', 'bi-sofa'],
-                            // NOVOS CAMPOS INCLUÍDOS ABAIXO
                             'agua_inclusa_condominio' => ['Água inclusa no condomínio', 'bi-droplet-half'],
                             'gas_incluso_condominio' => ['Gás incluso no condomínio', 'bi-fuel-pump']
                         ];
                         foreach($itens as $campo => $info):
-                            // Exibe APENAS se o campo for 1 (true)
                             if(isset($imovel[$campo]) && $imovel[$campo] == 1):
                                 $icone = $info[1];
                                 $texto = $info[0];
@@ -317,25 +332,17 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
                             <div class="preco-principal mb-2">R$ <?= number_format($imovel['preco'], 2, ',', '.') ?></div>
                         </div>
                         
-                        <div class="d-flex justify-content-between">
-                            <span><i class="bi bi-receipt"></i> Condomínio</span>
-                            <strong>R$ <?= number_format($imovel['valor_condominio'], 2, ',', '.') ?></strong>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-building"></i> Condomínio</span>
+                            <div class="text-end">
+                                <strong>R$ <?= number_format($imovel['valor_condominio'], 2, ',', '.') ?></strong>
+                                <?= $textoInclusos ?>
+                            </div>
                         </div>
                         <div class="d-flex justify-content-between mt-2">
-                            <span><i class="bi bi-building"></i> IPTU anual</span>
+                            <span><i class="bi bi-receipt"></i> IPTU anual</span>
                             <strong>R$ <?= number_format($imovel['valor_iptu'], 2, ',', '.') ?></strong>
                         </div>
-                        
-                        <?php if(!empty($imovel['agua_inclusa_condominio']) || !empty($imovel['gas_incluso_condominio'])): ?>
-                        <div class="mt-2 d-flex gap-2">
-                            <?php if($imovel['agua_inclusa_condominio']): ?>
-                                <span class="badge bg-info text-dark"><i class="bi bi-droplet"></i> Água inclusa</span>
-                            <?php endif; ?>
-                            <?php if($imovel['gas_incluso_condominio']): ?>
-                                <span class="badge bg-warning text-dark"><i class="bi bi-fire"></i> Gás incluso</span>
-                            <?php endif; ?>
-                        </div>
-                        <?php endif; ?>
                         
                         <div class="finance-divider"></div>
                         
@@ -427,25 +434,17 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
                         <div class="preco-principal mb-2">R$ <?= number_format($imovel['preco'], 2, ',', '.') ?></div>
                     </div>
                     
-                    <div class="d-flex justify-content-between">
-                        <span><i class="bi bi-receipt"></i> Condomínio</span>
-                        <strong>R$ <?= number_format($imovel['valor_condominio'], 2, ',', '.') ?></strong>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-building"></i> Condomínio</span>
+                        <div class="text-end">
+                            <strong>R$ <?= number_format($imovel['valor_condominio'], 2, ',', '.') ?></strong>
+                            <?= $textoInclusos ?>
+                        </div>
                     </div>
                     <div class="d-flex justify-content-between mt-2">
-                        <span><i class="bi bi-building"></i> IPTU anual</span>
+                        <span><i class="bi bi-receipt"></i> IPTU anual</span>
                         <strong>R$ <?= number_format($imovel['valor_iptu'], 2, ',', '.') ?></strong>
                     </div>
-                    
-                    <?php if(!empty($imovel['agua_inclusa_condominio']) || !empty($imovel['gas_incluso_condominio'])): ?>
-                    <div class="mt-2 d-flex gap-2">
-                        <?php if($imovel['agua_inclusa_condominio']): ?>
-                            <span class="badge bg-info text-dark"><i class="bi bi-droplet"></i> Água inclusa</span>
-                        <?php endif; ?>
-                        <?php if($imovel['gas_incluso_condominio']): ?>
-                            <span class="badge bg-warning text-dark"><i class="bi bi-fire"></i> Gás incluso</span>
-                        <?php endif; ?>
-                    </div>
-                    <?php endif; ?>
                     
                     <div class="finance-divider"></div>
                     
@@ -550,11 +549,11 @@ $status_atual = $status_map[$imovel['status']] ?? ['label' => ucfirst($imovel['s
         const map = L.map('mapaImovel').setView([lat, lng], 16);
         
         const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         });
         
         const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+            attribution: 'Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
         });
         
         osmLayer.addTo(map);

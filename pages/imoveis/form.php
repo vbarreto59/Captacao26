@@ -121,20 +121,23 @@ if (isset($_GET['set_capa']) && is_numeric($_GET['set_capa']) && $id > 0) {
     exit;
 }
 
-// Inicialização dos campos
+// Inicialização dos campos (incluindo os novos)
 $imovel = [
-    'proprietario_id' => '', 'corretor_id' => '', 'titulo' => '', 'endereco' => '', 'bairro' => '', 'cidade' => '',
+    'proprietario_id' => '', 'corretor_id' => '', 'titulo' => '', 'nome_edificio' => '', 'endereco' => '', 'bairro' => '', 'cidade' => '',
     'estado' => 'PE', 'cep' => '', 'latitude' => '', 'longitude' => '', 'preco' => 0.00,
     'quartos' => 0, 'suites' => 0, 'banheiros' => 0, 'area' => 0, 'vagas_garagem' => 0,
+    'vaga_coberta' => 0, 'varanda' => 0,
     'andar' => '', 'face' => 'nascente', 'tipo' => 'apartamento', 
     'construtora' => '', 'ano_entrega' => '', 
     'descricao' => '', 'status' => 'captado',
-    'mobiliado' => 0, 'gas_encanado' => 0, 'tem_piscina' => 0, 'tem_academia' => 0,
-    'tem_salao_festas' => 0, 'tem_espaco_gourmet' => 0, 'tem_playground' => 0,
+    'aceita_parceria' => 1, 'divisao_comissao' => '',
+    'mobiliado' => 0, 'aceita_animais' => 1, 'gas_encanado' => 0, 'tem_piscina' => 0, 'tem_academia' => 0,
+    'tem_salao_festas' => 0, 'tem_espaco_gourmet' => 0, 'area_lazer' => 0, 'jardim' => 0, 'tem_playground' => 0,
     'possui_elevador' => 0, 'possui_moveis_planejados' => 0, 
     'agua_inclusa_condominio' => 0, 'gas_incluso_condominio' => 0,
     'valor_condominio' => 0.00, 'valor_iptu' => 0.00,
-    'contato_sindico' => '', 'contato_portaria' => '', 
+    'contato_sindico' => '', 'telefone' => '', 'contato_portaria' => '', 
+    'portaria_24h' => 0, 'sistema_cameras' => 0, 'gerador' => 0, 'pilotis' => 0, 'portao_eletronico' => 0,
     'link_site' => '', 'resposta_rapida' => '', 'observacoes_gerais' => '',
     'rip_marinha' => '', 'regime_marinha' => 'nenhum', 'valor_foro_anual' => 0.00, 'laudemio_pago' => 0,
     'aceita_financiamento' => 0, 'aceita_fgts' => 0, 'aceita_permuta' => 0, 'aceita_consorcio' => 0,
@@ -180,6 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
             'proprietario_id' => !empty($_POST['proprietario_id']) ? (int)$_POST['proprietario_id'] : null,
             'corretor_id' => !empty($_POST['corretor_id']) ? (int)$_POST['corretor_id'] : null,
             'titulo' => $titulo,
+            'nome_edificio' => trim($_POST['nome_edificio'] ?? ''),
             'endereco' => trim($_POST['endereco'] ?? ''),
             'bairro' => trim($_POST['bairro'] ?? ''),
             'cidade' => trim($_POST['cidade'] ?? ''),
@@ -193,6 +197,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
             'banheiros' => (int)($_POST['banheiros'] ?? 0),
             'area' => (float)($_POST['area'] ?? 0),
             'vagas_garagem' => (int)($_POST['vagas_garagem'] ?? 0),
+            'vaga_coberta' => isset($_POST['vaga_coberta']) ? 1 : 0,
+            'varanda' => isset($_POST['varanda']) ? 1 : 0,
             'andar' => !empty($_POST['andar']) ? (int)$_POST['andar'] : null,
             'face' => $_POST['face'] ?? 'nascente',
             'tipo' => $_POST['tipo'] ?? 'apartamento',
@@ -200,15 +206,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
             'ano_entrega' => !empty($_POST['ano_entrega']) ? (int)$_POST['ano_entrega'] : null,
             'descricao' => trim($_POST['descricao'] ?? ''),
             'status' => $_POST['status'] ?? 'captado',
+            'aceita_parceria' => isset($_POST['aceita_parceria']) ? 1 : 0,
+            'divisao_comissao' => trim($_POST['divisao_comissao'] ?? ''),
             'link_site' => trim($_POST['link_site'] ?? ''),
             'resposta_rapida' => trim($_POST['resposta_rapida'] ?? ''),
             'observacoes_gerais' => trim($_POST['observacoes_gerais'] ?? ''),
             'mobiliado' => isset($_POST['mobiliado']) ? 1 : 0,
+            'aceita_animais' => isset($_POST['aceita_animais']) ? 1 : 0,
             'gas_encanado' => isset($_POST['gas_encanado']) ? 1 : 0,
             'tem_piscina' => isset($_POST['tem_piscina']) ? 1 : 0,
             'tem_academia' => isset($_POST['tem_academia']) ? 1 : 0,
             'tem_salao_festas' => isset($_POST['tem_salao_festas']) ? 1 : 0,
             'tem_espaco_gourmet' => isset($_POST['tem_espaco_gourmet']) ? 1 : 0,
+            'area_lazer' => isset($_POST['area_lazer']) ? 1 : 0,
+            'jardim' => isset($_POST['jardim']) ? 1 : 0,
             'tem_playground' => isset($_POST['tem_playground']) ? 1 : 0,
             'possui_elevador' => isset($_POST['possui_elevador']) ? 1 : 0,
             'possui_moveis_planejados' => isset($_POST['possui_moveis_planejados']) ? 1 : 0,
@@ -217,7 +228,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
             'valor_condominio' => (float)str_replace(['.', ','], ['', '.'], $_POST['valor_condominio'] ?? 0),
             'valor_iptu' => (float)str_replace(['.', ','], ['', '.'], $_POST['valor_iptu'] ?? 0),
             'contato_sindico' => trim($_POST['contato_sindico'] ?? ''),
+            'telefone' => trim($_POST['telefone'] ?? ''),
             'contato_portaria' => trim($_POST['contato_portaria'] ?? ''),
+            'portaria_24h' => isset($_POST['portaria_24h']) ? 1 : 0,
+            'sistema_cameras' => isset($_POST['sistema_cameras']) ? 1 : 0,
+            'gerador' => isset($_POST['gerador']) ? 1 : 0,
+            'pilotis' => isset($_POST['pilotis']) ? 1 : 0,
+            'portao_eletronico' => isset($_POST['portao_eletronico']) ? 1 : 0,
             'rip_marinha' => trim($_POST['rip_marinha'] ?? ''),
             'regime_marinha' => $_POST['regime_marinha'] ?? 'nenhum',
             'valor_foro_anual' => (float)str_replace(['.', ','], ['', '.'], $_POST['valor_foro_anual'] ?? 0),
@@ -317,7 +334,6 @@ if ($id > 0) {
                     <input type="hidden" name="acao" value="excluir">
                     <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Excluir</button>
                 </form>
-                <!-- Botão Duplicar -->
                 <form method="POST" onsubmit="return confirm('Duplicar este imóvel? O novo imóvel terá \"DUPE \" no início do título e as fotos serão copiadas.')">
                     <input type="hidden" name="acao" value="duplicar">
                     <button type="submit" class="btn btn-outline-secondary btn-sm"><i class="bi bi-files"></i> Duplicar</button>
@@ -351,8 +367,12 @@ if ($id > 0) {
                             <option value="suspenso" <?= $imovel['status']=='suspenso'?'selected':'' ?>>Suspenso</option>
                         </select>
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Nome do Edifício / Condomínio</label>
+                        <input type="text" name="nome_edificio" class="form-control" value="<?= htmlspecialchars($imovel['nome_edificio']) ?>" placeholder="Ex: Mirante do Mar, Parque das Flores">
+                    </div>
 
-                    <!-- NOVO CAMPO: Corretor Titular -->
+                    <!-- Corretor Titular -->
                     <div class="col-md-6">
                         <label class="form-label fw-bold text-primary">Corretor Titular</label>
                         <select name="corretor_id" class="form-select">
@@ -467,7 +487,16 @@ if ($id > 0) {
                     <div class="col-md-2"><label class="form-label">Quartos</label><input type="number" name="quartos" class="form-control" value="<?= $imovel['quartos'] ?>"></div>
                     <div class="col-md-2"><label class="form-label">Suítes</label><input type="number" name="suites" class="form-control" value="<?= $imovel['suites'] ?>"></div>
                     <div class="col-md-2"><label class="form-label">Banheiros</label><input type="number" name="banheiros" class="form-control" value="<?= $imovel['banheiros'] ?>"></div>
-                    <div class="col-md-1"><label class="form-label">Vagas</label><input type="number" name="vagas_garagem" class="form-control" value="<?= $imovel['vagas_garagem'] ?>"></div>
+                    <div class="col-md-2"><label class="form-label">Vagas</label><input type="number" name="vagas_garagem" class="form-control" value="<?= $imovel['vagas_garagem'] ?>"></div>
+                    <div class="col-md-2"><label class="form-label">Vaga Coberta?</label>
+                        <div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="vaga_coberta" <?= $imovel['vaga_coberta']?'checked':'' ?>> <label class="form-check-label">Sim</label></div>
+                    </div>
+                    <div class="col-md-2"><label class="form-label">Varanda?</label>
+                        <div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="varanda" <?= $imovel['varanda']?'checked':'' ?>> <label class="form-check-label">Sim</label></div>
+                    </div>
+                    <div class="col-md-1"><label class="form-label">Andar</label><input type="number" name="andar" class="form-control" value="<?= $imovel['andar'] !== '' ? $imovel['andar'] : '' ?>"></div>
+                    <div class="col-md-4"><label class="form-label">Construtora</label><input type="text" name="construtora" class="form-control" value="<?= htmlspecialchars($imovel['construtora']) ?>" placeholder="Ex: MRV, Direcional..."></div>
+                    <div class="col-md-2"><label class="form-label">Ano de Entrega</label><input type="number" name="ano_entrega" class="form-control" value="<?= $imovel['ano_entrega'] ?>" placeholder="AAAA" min="1900" max="2100"></div>
                     <div class="col-md-2"><label class="form-label">Face</label>
                         <select name="face" class="form-select">
                             <option value="nascente" <?= $imovel['face']=='nascente'?'selected':'' ?>>Nascente</option>
@@ -497,8 +526,10 @@ if ($id > 0) {
                     <?php
                     $diferenciais = [
                         'tem_piscina' => 'Piscina', 'tem_academia' => 'Academia', 'tem_salao_festas' => 'Salão de Festas',
-                        'tem_espaco_gourmet' => 'Espaço Gourmet', 'tem_playground' => 'Playground', 'possui_elevador' => 'Elevador',
-                        'possui_moveis_planejados' => 'Móveis Planejados', 'gas_encanado' => 'Gás Encanado', 'mobiliado' => 'Mobiliado',
+                        'tem_espaco_gourmet' => 'Espaço Gourmet', 'area_lazer' => 'Área de Lazer', 'jardim' => 'Jardim',
+                        'tem_playground' => 'Playground', 'possui_elevador' => 'Elevador',
+                        'possui_moveis_planejados' => 'Móveis Planejados', 'gas_encanado' => 'Gás Encanado', 
+                        'mobiliado' => 'Mobiliado', 'aceita_animais' => 'Aceita Animais',
                         'agua_inclusa_condominio' => 'Água inclusa no condomínio', 'gas_incluso_condominio' => 'Gás incluso no condomínio'
                     ];
                     foreach($diferenciais as $key => $label): ?>
@@ -509,20 +540,42 @@ if ($id > 0) {
                     <?php endforeach; ?>
                 </div>
             </div>
-        </div>
-
-        <!-- Gestão Interna -->
-        <div class="col-12">
-            <div class="card shadow-sm border-0 border-start border-4 border-info mb-3">
-                <div class="card-header bg-white fw-bold text-info">Gestão Interna</div>
-                <div class="card-body row g-3">
-                    <div class="col-md-6"><label class="form-label">Resposta Rápida</label><textarea name="resposta_rapida" class="form-control bg-light" rows="4"><?= htmlspecialchars($imovel['resposta_rapida']) ?></textarea></div>
-                    <div class="col-md-6"><label class="form-label">Observações Gerais</label><textarea name="observacoes_gerais" class="form-control bg-light" rows="4"><?= htmlspecialchars($imovel['observacoes_gerais']) ?></textarea></div>
+            <!-- Segurança e Infraestrutura -->
+            <div class="card shadow-sm border-0 mb-3">
+                <div class="card-header fw-bold">Segurança / Infraestrutura</div>
+                <div class="card-body">
+                    <div class="form-check"><input class="form-check-input" type="checkbox" name="portaria_24h" <?= $imovel['portaria_24h']?'checked':'' ?>><label class="form-check-label small">Portaria 24h</label></div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" name="sistema_cameras" <?= $imovel['sistema_cameras']?'checked':'' ?>><label class="form-check-label small">Sistema de Câmeras</label></div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" name="gerador" <?= $imovel['gerador']?'checked':'' ?>><label class="form-check-label small">Gerador Próprio</label></div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" name="pilotis" <?= $imovel['pilotis']?'checked':'' ?>><label class="form-check-label small">Pilotis</label></div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" name="portao_eletronico" <?= $imovel['portao_eletronico']?'checked':'' ?>><label class="form-check-label small">Portão Eletrônico</label></div>
                 </div>
             </div>
         </div>
 
-        <!-- NOVO BLOCO: Corretores Parceiros -->
+        <!-- Gestão Interna e Parcerias -->
+        <div class="col-12">
+            <div class="card shadow-sm border-0 border-start border-4 border-info mb-3">
+                <div class="card-header bg-white fw-bold text-info">Gestão Interna e Condições Comerciais</div>
+                <div class="card-body row g-3">
+                    <div class="col-md-6"><label class="form-label">Resposta Rápida</label><textarea name="resposta_rapida" class="form-control bg-light" rows="4"><?= htmlspecialchars($imovel['resposta_rapida']) ?></textarea></div>
+                    <div class="col-md-6"><label class="form-label">Observações Gerais</label><textarea name="observacoes_gerais" class="form-control bg-light" rows="4"><?= htmlspecialchars($imovel['observacoes_gerais']) ?></textarea></div>
+                    <div class="col-md-4">
+                        <div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="aceita_parceria" <?= $imovel['aceita_parceria']?'checked':'' ?> id="aceita_parceria"> <label class="form-check-label fw-bold" for="aceita_parceria">Aceita parceria com outros corretores?</label></div>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Divisão da Comissão (Ex: 50/50, 70/30)</label>
+                        <input type="text" name="divisao_comissao" class="form-control" value="<?= htmlspecialchars($imovel['divisao_comissao']) ?>" placeholder="Ex: 50/50">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Telefone de Contato (exibir no site)</label>
+                        <input type="text" name="telefone" class="form-control" value="<?= htmlspecialchars($imovel['telefone']) ?>" placeholder="(81) 99999-9999">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Corretores Parceiros -->
         <div class="col-12">
             <div class="card shadow-sm border-0 border-start border-4 border-primary mb-3">
                 <div class="card-header bg-white fw-bold text-primary"><i class="bi bi-people"></i> Corretores Parceiros</div>

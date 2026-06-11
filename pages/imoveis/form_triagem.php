@@ -15,7 +15,8 @@ $imovel = [
     'mobiliado' => 0, 'tem_piscina' => 0, 'tem_academia' => 0, 'tem_salao_festas' => 0,
     'tem_espaco_gourmet' => 0, 'tem_playground' => 0, 'possui_elevador' => 0,
     'valor_condominio' => 0.00, 'valor_iptu' => 0.00, 'regime_marinha' => 'nenhum',
-    'categoria_registro' => 'triagem'  // Padrão inicializado
+    'categoria_registro' => 'triagem',  // Padrão inicializado
+    'status' => 'parceria' // Padrão inicializado (Disponível)
 ];
 
 if ($id > 0) {
@@ -59,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'tem_playground'    => (int)isset($_POST['tem_playground']),
         'possui_elevador'   => (int)isset($_POST['possui_elevador']),
         'categoria_registro'=> $_POST['categoria_registro'], // Captura "triagem" ou "oficial"
-        'status'            => 'parceria'
+        'status'            => $_POST['status'] // Captura o status dinamicamente do formulário
     ];
 
     try {
@@ -130,11 +131,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <option value="triagem" <?= $imovel['categoria_registro'] == 'triagem' ? 'selected' : '' ?>>📋 Triagem (Parceiro)</option>
                         <option value="oficial" <?= $imovel['categoria_registro'] == 'oficial' ? 'selected' : '' ?>>⭐ Oficial (Imobiliária)</option>
                     </select>
-                    <small class="text-muted">Define se o imóvel é uma triagem de parceiro ou um lançamento oficial.</small>
+                </div>
+
+                <!-- Status do Imóvel (Disponível / Reservado) -->
+                <div class="col-md-3">
+                    <label class="form-label fw-bold text-danger">Situação Atual</label>
+                    <select name="status" class="form-select border-danger fw-bold text-danger" required>
+                        <option value="parceria" <?= $imovel['status'] == 'parceria' ? 'selected' : '' ?>>🟢 Disponível (Parceria)</option>
+                        <option value="reservado" <?= $imovel['status'] == 'reservado' ? 'selected' : '' ?>>🔴 RESERVADO / VENDIDO</option>
+                    </select>
                 </div>
 
                 <!-- LINHA 1 -->
-                <div class="col-md-6">
+                <div class="col-md-3">
                     <label class="form-label fw-bold">Edifício / Nome do Imóvel</label>
                     <input type="text" name="titulo" class="form-control border-primary" value="<?= htmlspecialchars($imovel['titulo']) ?>" required>
                 </div>
@@ -158,11 +167,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <!-- LINHA 2 (Localização) -->
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <label class="form-label">Endereço</label>
                     <input type="text" name="endereco" class="form-control" value="<?= htmlspecialchars($imovel['endereco']) ?>">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label">Bairro</label>
                     <input type="text" name="bairro" class="form-control" value="<?= htmlspecialchars($imovel['bairro']) ?>">
                 </div>
@@ -299,7 +308,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <tr>
                         <td><?= str_pad($it['id'], 3, '0', STR_PAD_LEFT)?></td>
                         <td>
-                            <div class="fw-bold"><?= htmlspecialchars($it['titulo']) ?></div>
+                            <!-- Bloco Adaptativo para Detecção de Imóvel Reservado -->
+                            <?php 
+                            $isReservado = isset($it['status']) && (
+                                $it['status'] === 'reservado' || 
+                                $it['status'] === 'true' || 
+                                $it['status'] == 1 || 
+                                (isset($it['reservado']) && $it['reservado'] == true)
+                            );
+                            if ($isReservado): ?>
+                                <div class="mb-1">
+                                    <span class="badge bg-danger text-white fw-bold px-2 py-1 text-uppercase shadow-sm" style="font-size: 0.65rem; display: inline-block;">
+                                        <i class="bi bi-exclamation-triangle-fill me-1"></i> RESERVADO/VENDIDO/INDISPONÍVEL
+                                    </span>
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="fw-bold"><?= htmlspecialchars(mb_strtoupper($it['titulo'], 'UTF-8')) ?></div>
                             <span class="badge bg-secondary text-uppercase" style="font-size: 0.6rem;"><?= $it['tipo'] ?></span>
                             <span class="badge <?= $isNovo ? 'bg-success' : 'bg-warning text-dark' ?>" style="font-size: 0.6rem;">
                                 <?= $isNovo ? 'NOVO' : 'USADO' ?>

@@ -53,6 +53,7 @@ $corretores = $conn->query($sql)->fetchAll();
 
                         <?php 
                             $link_imoveis = $base_url . "ver_imoveis.php?pin=" . $c['codigo_acesso'];
+                            $link_texto = $base_url . "ver_imoveis_zap.php?pin=" . $c['codigo_acesso'];
                         ?>
 
                         <div class="bg-light p-2 rounded mb-3" style="font-size: 0.75rem; border: 1px solid #eee;">
@@ -61,9 +62,14 @@ $corretores = $conn->query($sql)->fetchAll();
                         </div>
                         
                         <div class="d-grid gap-2">
-                            <a href="<?= $link_imoveis ?>" target="_blank" class="btn btn-sm btn-primary">
-                                <i class="bi bi-box-arrow-up-right"></i> Abrir Portfólio
-                            </a>
+                            <div class="d-flex gap-2">
+                                <a href="<?= $link_imoveis ?>" target="_blank" class="btn btn-sm btn-primary flex-grow-1">
+                                    <i class="bi bi-box-arrow-up-right"></i> Abrir Portfólio
+                                </a>
+                                <a href="<?= $link_texto ?>" target="_blank" class="btn btn-sm btn-success">
+                                    <i class="bi bi-whatsapp"></i> Versão Texto
+                                </a>
+                            </div>
                             
                             <div class="d-flex gap-2">
                                 <button class="btn btn-sm btn-outline-info flex-grow-1" onclick="copyLink('<?= $link_imoveis ?>')">

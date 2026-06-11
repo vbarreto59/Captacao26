@@ -41,7 +41,7 @@ $sql = "
         i.aceita_consorcio,
         (SELECT caminho FROM fotos_imoveis WHERE imovel_id = i.id ORDER BY capa DESC, ordem ASC, id ASC LIMIT 1) AS foto_capa
     FROM imoveis i 
-    WHERE i.deleted_at IS NULL AND i.data_venda IS NULL AND categoria_registro = 'oficial'
+    WHERE i.deleted_at IS NULL AND i.reservado<>1 AND categoria_registro = 'oficial'
     ORDER BY i.preco 
 ";
 
@@ -243,8 +243,17 @@ $url_fotos = "../../uploads/fotos_imoveis/";
                     </div>
 
                     <div class="valores-box">
-                        <?php if($im['valor_condominio'] > 0): ?>
-                            <div class="valores-item"><i class="bi bi-building"></i> Cond. R$ <?= number_format($im['valor_condominio'], 2, ',', '.') ?></div>
+                        <?php if($im['valor_condominio'] > 0): 
+                            // Monta o texto de inclusão com base no banco de dados
+                            $inclusos = [];
+                            if ($im['agua_inclusa_condominio'] == 1) { $inclusos[] = 'Água'; }
+                            if ($im['gas_incluso_condominio'] == 1) { $inclusos[] = 'Gás'; }
+                            
+                            $textoInclusos = !empty($inclusos) ? ' (' . implode(' e ', $inclusos) . ' inclusos)' : '';
+                        ?>
+                            <div class="valores-item">
+                                <i class="bi bi-building"></i> Cond. R$ <?= number_format($im['valor_condominio'], 2, ',', '.') . $textoInclusos ?>
+                            </div>
                         <?php endif; ?>
                         <?php if($im['valor_iptu'] > 0): ?>
                             <div class="valores-item"><i class="bi bi-receipt"></i> IPTU R$ <?= number_format($im['valor_iptu'], 2, ',', '.') ?></div>
@@ -295,7 +304,11 @@ $url_fotos = "../../uploads/fotos_imoveis/";
                         <a href="imovel.php?id=<?= $im['id'] ?>" class="btn btn-outline-primary btn-detalhes">
                             Ver Detalhes Completo
                         </a>
+                        <!-- Botão WhatsApp: link para copiar texto e compartilhar -->
+                            <a href="copiar_whatsapp.php?id=<?= $im['id'] ?>" target="_blank" class="btn btn-outline-primary btn-detalhes"><i class="bi bi-whatsapp"></i> WhatsApp</a>
+                        
                     </div>
+
                 </div>
             </div>
         </div>

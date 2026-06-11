@@ -4,11 +4,10 @@ session_start();
 require_once '../../includes/auth.php'; // ajuste o caminho conforme sua estrutura
 require_once '../../conn_cap.php';
 
-// Busca todos os imóveis com o nome do corretor (apenas 3 primeiras letras) e o código de acesso (PIN)
-$sql = "SELECT i.*, LEFT(c.nome, 3) AS corretor_short, c.codigo_acesso AS corretor_pin 
+// Mantendo o nome completo do corretor
+$sql = "SELECT i.*, c.nome AS corretor_nome, c.codigo_acesso AS corretor_pin 
         FROM imoveis i 
         LEFT JOIN corretores c ON i.corretor_id = c.id 
-        WHERE i.deleted_at IS NULL 
         ORDER BY i.id DESC";
 $stmt = $conn->prepare($sql);
 $stmt->execute();
@@ -52,18 +51,29 @@ $imoveis = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
         .mobile-property-card.border-triagem { border-left-color: #fd7e14; }
         .mobile-property-card.border-oficial { border-left-color: #0d6efd; }
+        
+        /* Customizações para itens Excluídos */
+        .linha-excluido { opacity: 0.60; background-color: #fdf2f2 !important; }
+        .linha-excluido td:first-child { text-decoration: line-through; color: #dc3545; font-weight: bold; }
+        
+        .mobile-property-card.border-excluido { border-left-color: #dc3545 !important; opacity: 0.75; background-color: #fffdfd; }
     </style>
 </head>
 <body>
 <?php require_once '../../includes/header.php'; ?>
 <div class="container-fluid py-3 py-md-4">
     <div class="card shadow-sm border-0">
+        <a href="insert_json.php" target="_blank" class="btn btn-outline-dark fw-bold shadow-sm">
+    <i class="bi bi-box-arrow-in-down me-1"></i> Importar Estrutura JSON
+</a>
+<br>
         <div class="card-header bg-dark text-white py-3">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div>
                     <h4 class="m-0 fs-5 fs-md-4"><i class="bi bi-database"></i> Todos os Imóveis (Geral)</h4>
                     <small class="text-white-50 d-none d-sm-inline">Lista completa de todos os imóveis cadastrados</small>
                 </div>
+
                 
                 <!-- SISTEMA DE ORDENAÇÃO E BUSCA -->
                 <div class="d-flex gap-2 flex-grow-1 flex-md-grow-0 justify-content-end align-items-center w-100 w-md-auto flex-wrap">
@@ -98,6 +108,7 @@ $imoveis = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <th>Título</th>
                             <th>Bairro</th>
                             <th>Preço (R$)</th>
+                            <th>Condomínio</th>
                             <th>Corretor</th>
                             <th>Tipo</th>
                             <th>Quartos</th>
@@ -109,28 +120,42 @@ $imoveis = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <tbody>
                         <?php foreach ($imoveis as $imovel): 
                             $pin_corretor = !empty($imovel['corretor_pin']) ? urlencode($imovel['corretor_pin']) : '';
+                            $estaExcluido = !empty($imovel['deleted_at']);
                         ?>
-                        <tr>
+                        <!-- Injeta classe se o imóvel estiver excluído logicamente -->
+                        <tr class="<?= $estaExcluido ? 'linha-excluido' : '' ?>">
                             <td><?= $imovel['id'] ?></td>
-                            <td><strong><?= htmlspecialchars($imovel['titulo']) ?></strong></td>
+                            <td>
+                                <strong><?= htmlspecialchars(mb_strtoupper($imovel['titulo'], 'UTF-8')) ?></strong>
+                            </td>
                             <td><?= htmlspecialchars($imovel['bairro']) ?></td>
                             <td class="text-end fw-bold">R$ <?= number_format($imovel['preco'], 2, ',', '.') ?></td>
-                            <td><span class="badge bg-secondary"><?= htmlspecialchars($imovel['corretor_short'] ?? '---') ?></span></td>
+                            <!-- Exibição corrigida para valor_condominio -->
+                            <td class="text-end text-muted small">
+                                <?= !empty($imovel['valor_condominio']) && $imovel['valor_condominio'] > 0 ? 'R$ ' . number_format($imovel['valor_condominio'], 2, ',', '.') : '---' ?>
+                            </td>
+                            <td><span class="text-dark small fw-medium"><?= htmlspecialchars($imovel['corretor_nome'] ?? '---') ?></span></td>
                             <td><?= htmlspecialchars($imovel['tipo']) ?></td>
                             <td><?= $imovel['quartos'] ?></td>
                             <td><?= $imovel['area'] ?>m²</td>
                             <td>
-                                <?php if ($imovel['categoria_registro'] == 'triagem'): ?>
-                                    <span class="badge badge-orange text-uppercase">Triagem</span>
-                                <?php elseif ($imovel['categoria_registro'] == 'oficial'): ?>
-                                    <span class="badge badge-blue text-uppercase">Oficial</span>
-                                <?php else: ?>
-                                    <span class="badge bg-secondary text-uppercase"><?= htmlspecialchars($imovel['categoria_registro']) ?></span>
-                                <?php endif; ?>
+                                <div class="d-flex gap-1 flex-wrap">
+                                    <?php if ($estaExcluido): ?>
+                                        <span class="badge bg-danger text-uppercase"><i class="bi bi-trash-fill"></i> Excluído</span>
+                                    <?php endif; ?>
+
+                                    <?php if ($imovel['categoria_registro'] == 'triagem'): ?>
+                                        <span class="badge badge-orange text-uppercase">Triagem</span>
+                                    <?php elseif ($imovel['categoria_registro'] == 'oficial'): ?>
+                                        <span class="badge badge-blue text-uppercase">Oficial</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-secondary text-uppercase"><?= htmlspecialchars($imovel['categoria_registro']) ?></span>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td class="text-center">
-                                <a href="editar_imovel_parceiro.php?pin=<?= $pin_corretor ?>&id=<?= $imovel['id'] ?>" class="btn btn-sm btn-outline-primary" title="Editar Imóvel" target="_blank">
-                                    <i class="bi bi-pencil"></i> Editar
+                                <a href="editar_imovel_parceiro.php?pin=<?= $pin_corretor ?>&id=<?= $imovel['id'] ?>" class="btn btn-sm <?= $estaExcluido ? 'btn-danger text-white' : 'btn-outline-primary' ?>" title="Editar Imóvel" target="_blank">
+                                    <i class="bi <?= $estaExcluido ? 'bi-eye-fill' : 'bi-pencil' ?>"></i> <?= $estaExcluido ? 'Ver / Restaurar' : 'Editar' ?>
                                 </a>
                             </td>
                         </tr>
@@ -142,9 +167,15 @@ $imoveis = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <!-- LAYOUT MOBILE: CARDS -->
             <div class="view-mobile" id="conteinerMobile">
                 <?php foreach ($imoveis as $imovel): 
-                    $classeBorda = 'border-secondary';
-                    if($imovel['categoria_registro'] == 'triagem') $classeBorda = 'border-triagem';
-                    if($imovel['categoria_registro'] == 'oficial') $classeBorda = 'border-oficial';
+                    $estaExcluido = !empty($imovel['deleted_at']);
+                    
+                    if ($estaExcluido) {
+                        $classeBorda = 'border-excluido';
+                    } else {
+                        $classeBorda = 'border-secondary';
+                        if($imovel['categoria_registro'] == 'triagem') $classeBorda = 'border-triagem';
+                        if($imovel['categoria_registro'] == 'oficial') $classeBorda = 'border-oficial';
+                    }
                     
                     $pin_corretor = !empty($imovel['corretor_pin']) ? urlencode($imovel['corretor_pin']) : '';
                 ?>
@@ -152,11 +183,20 @@ $imoveis = $stmt->fetchAll(PDO::FETCH_ASSOC);
                          data-id="<?= $imovel['id'] ?>"
                          data-preco="<?= $imovel['preco'] ?>"
                          data-bairro="<?= htmlspecialchars(strtolower($imovel['bairro'])) ?>"
-                         data-searchable="<?= strtolower(htmlspecialchars($imovel['id'] . ' ' . $imovel['titulo'] . ' ' . $imovel['bairro'] . ' ' . $imovel['tipo'])) ?>">
+                         data-searchable="<?= strtolower(htmlspecialchars($imovel['id'] . ' ' . $imovel['titulo'] . ' ' . $imovel['bairro'] . ' ' . $imovel['tipo'] . ' ' . ($imovel['corretor_nome'] ?? '') . ($estaExcluido ? ' excluido deletado' : ''))) ?>">
                         
                         <div class="d-flex justify-content-between align-items-start mb-2">
-                            <span class="text-muted small fw-bold">#<?= $imovel['id'] ?> • CRT: <?= htmlspecialchars($imovel['corretor_short'] ?? '---') ?></span>
-                            <div>
+                            <span class="text-muted small fw-bold">
+                                #<?= $imovel['id'] ?> 
+                                <?php if(!empty($imovel['corretor_nome'])): ?>
+                                    • CRT: <?= htmlspecialchars($imovel['corretor_nome']) ?>
+                                <?php endif; ?>
+                            </span>
+                            <div class="d-flex gap-1">
+                                <?php if ($estaExcluido): ?>
+                                    <span class="badge bg-danger text-uppercase"><i class="bi bi-trash-fill"></i> Excluído</span>
+                                <?php endif; ?>
+
                                 <?php if ($imovel['categoria_registro'] == 'triagem'): ?>
                                     <span class="badge badge-orange text-uppercase">Triagem</span>
                                 <?php elseif ($imovel['categoria_registro'] == 'oficial'): ?>
@@ -167,12 +207,20 @@ $imoveis = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             </div>
                         </div>
 
-                        <h6 class="mb-1 text-dark fw-bold"><?= htmlspecialchars($imovel['titulo']) ?></h6>
+                        <h6 class="mb-1 text-dark fw-bold"><?= htmlspecialchars(mb_strtoupper($imovel['titulo'], 'UTF-8')) ?></h6>
                         <div class="text-muted small mb-2"><i class="bi bi-geo-alt"></i> <?= htmlspecialchars($imovel['bairro']) ?></div>
                         
                         <div class="d-flex justify-content-between align-items-center my-2 pt-2 border-top">
-                            <div class="text-primary fw-bold fs-5">
-                                R$ <?= number_format($imovel['preco'], 2, ',', '.') ?>
+                            <div>
+                                <div class="text-primary fw-bold fs-5">
+                                    R$ <?= number_format($imovel['preco'], 2, ',', '.') ?>
+                                </div>
+                                <!-- Exibição corrigida para valor_condominio no Mobile -->
+                                <?php if(!empty($imovel['valor_condominio']) && $imovel['valor_condominio'] > 0): ?>
+                                    <div class="text-muted" style="font-size: 0.75rem;">
+                                        Cond.: R$ <?= number_format($imovel['valor_condominio'], 2, ',', '.') ?>
+                                    </div>
+                                <?php endif; ?>
                             </div>
                             <div class="text-muted small">
                                 <span class="me-2"><i class="bi bi-door-open"></i> <?= $imovel['quartos'] ?>Q</span>
@@ -180,10 +228,10 @@ $imoveis = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             </div>
                         </div>
 
-                        <!-- Botão de ação com id e pin -->
+                        <!-- Botão de ação com id e pin adaptativo -->
                         <div class="d-grid mt-2">
-                            <a href="editar_imovel_parceiro.php?pin=<?= $pin_corretor ?>&id=<?= $imovel['id'] ?>" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-pencil me-1"></i> Editar Imóvel
+                            <a href="editar_imovel_parceiro.php?pin=<?= $pin_corretor ?>&id=<?= $imovel['id'] ?>" class="btn btn-sm <?= $estaExcluido ? 'btn-danger text-white' : 'btn-outline-primary' ?>" target="_blank">
+                                <i class="bi <?= $estaExcluido ? 'bi-eye-fill' : 'bi-pencil' ?> me-1"></i> <?= $estaExcluido ? 'Ver / Restaurar Imóvel' : 'Editar Imóvel' ?>
                             </a>
                         </div>
                     </div>
@@ -210,8 +258,8 @@ $(document).ready(function() {
         "pageLength": 100,
         "order": [[0, "desc"]], 
         "columnDefs": [
-            { "className": "dt-body-right", "targets": [3] },
-            { "orderable": false, "targets": [9] }
+            { "className": "dt-body-right", "targets": [3, 4] }, // Alinha Preço e Condomínio à direita
+            { "orderable": false, "targets": [10] }
         ]
     });
 

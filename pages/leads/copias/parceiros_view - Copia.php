@@ -4,13 +4,12 @@ session_start();
 require_once '../../includes/auth.php';
 require_once '../../conn_cap.php';
 
-// Buscar todos os leads
+// Buscar todos os leads (exceto soft delete, se houver, mas vamos pegar todos)
 $sql = "SELECT 
             l.id,
             l.nome,
             l.email,
             l.tipo_desejo,
-            l.tipo_pagamento,
             l.perfil_uso,
             l.valor_max,
             l.quartos_min,
@@ -26,23 +25,17 @@ $sql = "SELECT
             l.andar_preferencia,
             l.caracteristicas_condominio,
             l.observacoes,
-            l.obs_parceiros,
             l.fase_funil,
             l.temperatura,
             l.prazo_fechamento,
             l.origem_lead,
             l.created_at
         FROM leads l
-        WHERE compartilhado_parceiro = 1
         ORDER BY l.id DESC";
 
 $stmt = $conn->prepare($sql);
 $stmt->execute();
 $leads = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Data atual formatada
-$dataAtual = date('d/m/Y');
-$horaAtual = date('H:i');
 
 //require_once '../../includes/header.php';
 ?>
@@ -149,53 +142,6 @@ $horaAtual = date('H:i');
             font-weight: 600;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
-        .contador-card {
-            background: rgba(255,255,255,0.15);
-            border-radius: 16px;
-            padding: 10px 18px;
-            text-align: center;
-            backdrop-filter: blur(4px);
-        }
-        .contador-numero {
-            font-size: 2rem;
-            font-weight: 800;
-            line-height: 1;
-        }
-
-        /* ============================================ */
-        /* MODIFICAÇÃO PARA MOBILE – DUAS INFORMAÇÕES POR LINHA */
-        /* ============================================ */
-        @media (max-width: 768px) {
-            .info-grid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 10px;
-            }
-            .info-item {
-                padding: 6px 10px;
-                font-size: 0.8rem;
-            }
-            .info-label {
-                width: auto;
-                display: block;
-                margin-bottom: 4px;
-                font-size: 0.7rem;
-            }
-            .info-value {
-                display: block;
-                font-size: 0.8rem;
-            }
-            .lead-title {
-                font-size: 1.2rem;
-            }
-            .comodidade-badge {
-                font-size: 0.7rem;
-                padding: 3px 10px;
-            }
-            .contador-numero {
-                font-size: 1.5rem;
-            }
-        }
-
         @media print {
             .print-btn, .header-actions, .navbar, footer, .btn {
                 display: none !important;
@@ -222,29 +168,19 @@ $horaAtual = date('H:i');
 <body>
 
 <div class="container py-4">
-    <!-- Cabeçalho do relatório com DATA e CONTADOR -->
+    <!-- Cabeçalho do relatório -->
     <div class="report-header d-flex justify-content-between align-items-center flex-wrap">
         <div>
             <h1 class="display-6 fw-bold mb-2">
                 <i class="bi bi-clipboard-data me-2"></i> Leads Valter Barreto
             </h1>
             <p class="mb-0 opacity-75">
-                Relatório de Leads do Corretor Valter Barreto - CRECI 22003
+                Relatório completo de necessidades e preferências dos clientes (sem telefone)
             </p>
-            <div class="mt-2 d-flex gap-3 flex-wrap">
-                <small class="text-light-emphasis">
-                    <i class="bi bi-calendar3"></i> Emitido em: <?= $dataAtual ?> às <?= $horaAtual ?>
-                </small>
-                <small class="text-light-emphasis">
-                    <i class="bi bi-database"></i> Total de leads: <?= count($leads) ?>
-                </small>
-            </div>
+            <small class="text-light-emphasis">Total de leads: <?= count($leads) ?></small>
         </div>
-        <div class="mt-3 mt-md-0 text-center">
-            <div class="contador-card">
-                <div class="small text-uppercase opacity-75">QTD de Leads:</div>
-                <div class="contador-numero"><?= count($leads) ?></div>
-            </div>
+        <div class="mt-3 mt-md-0">
+            <i class="bi bi-file-text fs-1 opacity-50"></i>
         </div>
     </div>
 
@@ -265,46 +201,35 @@ $horaAtual = date('H:i');
                 <div class="lead-title">
                     <i class="bi bi-person-circle me-2 text-primary"></i>
                     <?= htmlspecialchars($lead['nome']) ?>
+                    <span class="badge-phase ms-3">
+                        <!-- <i class="bi bi-funnel"></i> <?= htmlspecialchars($lead['fase_funil'] ?? 'Novo') ?> -->
+                    </span>
+                     <span class="badge-phase ms-1">
+                        <?php 
+                        $tempIcon = match($lead['temperatura']) {
+                            'Quente' => '🔥',
+                            'Morno' => '🌡️',
+                            'Frio' => '❄️',
+                            default => '⚪'
+                        };
+                        //echo $tempIcon . ' ' . ($lead['temperatura'] ?? 'Morno');
+                        ?>
+                    </span> 
                 </div>
-                <!-- Data do cadastro (opcional, pode ativar se quiser) -->
-                <!-- <small class="text-muted">Cadastro: <?= date('d/m/Y', strtotime($lead['created_at'])) ?></small> -->
+                <!-- <small class="text-muted">
+                    <i class="bi bi-calendar3"></i> Cadastro: <?= date('d/m/Y', strtotime($lead['created_at'])) ?>
+                </small>  -->
             </div>
 
             <div class="info-grid">
-
-<div class="info-item">
-    <span class="info-label"><i class="bi bi-cart-check"></i> Intenção:</span>
-    <?php 
-        $intencao = $lead['tipo_desejo'] ?: 'Não definido';
-        $intencao_clean = strtolower($intencao);
-
-        // Define as classes e estilos dependendo do tipo
-        if ($intencao_clean === 'compra') {
-            $classeBadge = 'badge bg-primary text-white fs-5';
-            $estiloCustomizado = '';
-        } elseif ($intencao_clean === 'aluguel') {
-            $classeBadge = 'badge text-white fs-5';
-            $estiloCustomizado = 'style="background-color: #ff8c00;"'; // Laranja escuro bem visível com texto branco
-        } else {
-            $classeBadge = 'badge bg-secondary text-white fs-5';
-            $estiloCustomizado = '';
-        }
-    ?>
-    <span class="info-value <?= $classeBadge ?>" <?= $estiloCustomizado ?>>
-        <?= htmlspecialchars($intencao) ?>
-    </span>
-</div>
-                                
+                <div class="info-item">
+                    <span class="info-label"><i class="bi bi-envelope"></i> E-mail:</span>
+                    <span class="info-value"><?= htmlspecialchars($lead['email'] ?: 'Não informado') ?></span>
+                </div>
                 <div class="info-item">
                     <span class="info-label"><i class="bi bi-coin"></i> Orçamento máx.:</span>
                     <span class="info-value">R$ <?= number_format($lead['valor_max'], 0, ',', '.') ?></span>
                 </div>
-    <div class="info-item">
-        <span class="info-label"><i class="bi bi-coin"></i> Pagamento:</span>
-        <span class="info-value">
-            <?= !empty($lead['tipo_pagamento']) ? htmlspecialchars($lead['tipo_pagamento']) : 'Financiamento' ?>
-        </span>
-    </div>
                 <div class="info-item">
                     <span class="info-label"><i class="bi bi-door-open"></i> Quartos mín.:</span>
                     <span class="info-value"><?= $lead['quartos_min'] ?: 'Não especificado' ?></span>
@@ -313,7 +238,10 @@ $horaAtual = date('H:i');
                     <span class="info-label"><i class="bi bi-building"></i> Tipologia:</span>
                     <span class="info-value"><?= htmlspecialchars($lead['tipologia'] ?: 'Qualquer') ?></span>
                 </div>
-
+                <div class="info-item">
+                    <span class="info-label"><i class="bi bi-cart-check"></i> Intenção:</span>
+                    <span class="info-value"><?= htmlspecialchars($lead['tipo_desejo'] ?: 'Não definido') ?></span>
+                </div>
                 <div class="info-item">
                     <span class="info-label"><i class="bi bi-people"></i> Perfil de uso:</span>
                     <span class="info-value"><?= htmlspecialchars($lead['perfil_uso'] ?: 'Não definido') ?></span>
@@ -334,7 +262,14 @@ $horaAtual = date('H:i');
                     <span class="info-label"><i class="bi bi-layers"></i> Andar pref.:</span>
                     <span class="info-value"><?= htmlspecialchars($lead['andar_preferencia'] ?: 'Indiferente') ?></span>
                 </div>
-
+                <div class="info-item">
+                    <span class="info-label"><i class="bi bi-calendar-check"></i> Prazo fechamento:</span>
+                    <span class="info-value"><?= htmlspecialchars($lead['prazo_fechamento'] ?: 'Não informado') ?></span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label"><i class="bi bi-tag"></i> Origem lead:</span>
+                    <span class="info-value"><?= htmlspecialchars($lead['origem_lead'] ?: 'Direto') ?></span>
+                </div>
             </div>
 
             <!-- Características específicas (checkboxes) -->
@@ -374,12 +309,12 @@ $horaAtual = date('H:i');
             </div>
             <?php endif; ?>
 
-            <!-- Observações gerais (descomente se quiser exibir) -->
+            <!-- Observações gerais -->
             <?php if (!empty($lead['observacoes'])): ?>
             <div class="text-observacao">
                 <i class="bi bi-chat-left-quote me-2 text-warning"></i>
                 <strong>Observações:</strong><br>
-                <?= nl2br(htmlspecialchars($lead['obs_parceiros'])) ?>
+                <!-- <?= nl2br(htmlspecialchars($lead['observacoes'])) ?> -->
             </div>
             <?php endif; ?>
         </div>

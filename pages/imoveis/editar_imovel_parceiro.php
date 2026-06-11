@@ -10,7 +10,22 @@ $id  = isset($_GET['id']) && is_numeric($_GET['id']) ? (int)$_GET['id'] : 0;
 $erro = '';
 $sucesso = '';
 
-// Se não veio PIN ou ID, mostra aviso
+// Se o PIN estiver vazio, busca o PIN do corretor de ID 1 no banco (Fallback)
+if (empty($pin) && $id > 0) {
+    try {
+        $stmtPadrao = $conn->prepare("SELECT codigo_acesso FROM corretores WHERE id = 1 AND status = 'Ativo' AND deleted_at IS NULL");
+        $stmtPadrao->execute();
+        $corretorPadrao = $stmtPadrao->fetch(PDO::FETCH_ASSOC);
+        
+        if ($corretorPadrao && !empty($corretorPadrao['codigo_acesso'])) {
+            $pin = $corretorPadrao['codigo_acesso'];
+        }
+    } catch (PDOException $e) {
+        // Silencioso
+    }
+}
+
+// Se mesmo após a tentativa de fallback o PIN continuar vazio ou o ID for inválido, mostra aviso
 if (empty($pin) || $id <= 0) {
     die("<div style='font-family:sans-serif; text-align:center; padding:50px;'>
             <h2>Acesso inválido</h2>
@@ -31,75 +46,108 @@ try {
              </div>");
     }
 
-    // 2. Buscar o imóvel e verificar se pertence a este corretor
-    $stmtImovel = $conn->prepare("SELECT * FROM imoveis WHERE id = ? AND corretor_id = ? AND deleted_at IS NULL");
-    $stmtImovel->execute([$id, $corretor['id']]);
+    // Buscar listas de Proprietários e Corretores para os selects do formulário
+    $listaProprietarios = $conn->query("SELECT id, nome FROM proprietarios ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $listaCorretores    = $conn->query("SELECT id, nome, creci FROM corretores WHERE deleted_at IS NULL ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+    // 2. Processar a EXCLUSÃO LÓGICA (Soft Delete)
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao_imovel']) && $_POST['acao_imovel'] === 'excluir') {
+        $stmtDel = $conn->prepare("UPDATE imoveis SET deleted_at = NOW() WHERE id = ? AND corretor_id = ? AND deleted_at IS NULL");
+        if ($stmtDel->execute([$id, $imovel['corretor_id'] ?? $corretor['id']])) {
+            $sucesso = "Imóvel excluído com sucesso! Você pode revertê-lo abaixo se necessário.";
+        } else {
+            $erro = "Erro ao tentar excluir o imóvel.";
+        }
+    }
+
+    // 3. Processar a RESTAURAÇÃO DO IMÓVEL (Reverter exclusão)
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao_imovel']) && $_POST['acao_imovel'] === 'restaurar') {
+        $stmtRest = $conn->prepare("UPDATE imoveis SET deleted_at = NULL WHERE id = ? AND corretor_id = ? AND deleted_at IS NOT NULL");
+        if ($stmtRest->execute([$id, $imovel['corretor_id'] ?? $corretor['id']])) {
+            $sucesso = "Imóvel restaurado com sucesso! Os campos de edição foram liberados.";
+        } else {
+            $erro = "Erro ao tentar restaurar o imóvel.";
+        }
+    }
+
+    // 4. Buscar o imóvel (Busca direta por ID para permitir trânsito de corretores)
+    $stmtImovel = $conn->prepare("SELECT * FROM imoveis WHERE id = ?");
+    $stmtImovel->execute([$id]);
     $imovel = $stmtImovel->fetch(PDO::FETCH_ASSOC);
 
     if (!$imovel) {
         die("<div style='font-family:sans-serif; text-align:center; padding:50px;'>
                 <h2 style='color:red;'>Imóvel não encontrado</h2>
-                <p>Este imóvel não existe ou não pertence ao seu cadastro.</p>
+                <p>Este imóvel não existe no sistema.</p>
              </div>");
     }
 
-    // 3. Processar a atualização quando o formulário for enviado
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        // Função de formatação de moeda (mesma usada no form_triagem)
-        $f = function($v) { 
-            return (float) str_replace(['.', ','], ['', '.'], $v); 
-        };
+    // Define se o imóvel está atualmente excluído
+    $estaExcluido = !empty($imovel['deleted_at']);
 
-        $dados = [
-            'titulo'            => $_POST['titulo'],
-            'endereco'          => $_POST['endereco'],
-            'bairro'            => $_POST['bairro'],
-            'cep'               => $_POST['cep'],
-            'preco'             => $f($_POST['preco']),
-            'valor_condominio'  => $f($_POST['valor_condominio']),
-            'valor_iptu'        => $f($_POST['valor_iptu']),
-            'area'              => (float)$_POST['area'],
-            'quartos'           => (int)$_POST['quartos'],
-            'suites'            => (int)$_POST['suites'],
-            'banheiros'         => (int)$_POST['banheiros'],
-            'vagas_garagem'     => (int)$_POST['vagas_garagem'],
-            'andar'             => (int)$_POST['andar'],
-            'face'              => $_POST['face'],
-            'tipo'              => $_POST['tipo'],
-            'conservacao'       => $_POST['conservacao'],
-            'regime_marinha'    => $_POST['regime_marinha'],
-            'link_site'         => $_POST['link_site'],
-            'observacoes_gerais'=> $_POST['observacoes_gerais'], // <--- Corrigido para corresponder à tabela
-            'entrega_obra'      => !empty($_POST['entrega_obra']) ? $_POST['entrega_obra'] . "-01" : null,
-            'mobiliado'         => (int)isset($_POST['mobiliado']),
-            'tem_piscina'       => (int)isset($_POST['tem_piscina']),
-            'tem_academia'      => (int)isset($_POST['tem_academia']),
-            'tem_salao_festas'  => (int)isset($_POST['tem_salao_festas']),
-            'tem_espaco_gourmet'=> (int)isset($_POST['tem_espaco_gourmet']),
-            'tem_playground'    => (int)isset($_POST['tem_playground']),
-            'possui_elevador'   => (int)isset($_POST['possui_elevador']),
-            'categoria_registro'=> $_POST['categoria_registro'] ?? 'triagem'
-        ];
-
-        // Monta SET para UPDATE
-        $set = "";
-        foreach ($dados as $key => $val) {
-            $set .= "$key = ?, ";
-        }
-        $sql = "UPDATE imoveis SET " . rtrim($set, ', ') . " WHERE id = ? AND corretor_id = ?";
-        $params = array_values($dados);
-        $params[] = $id;
-        $params[] = $corretor['id'];
-
-        $stmtUp = $conn->prepare($sql);
-        if ($stmtUp->execute($params)) {
-            $sucesso = "Imóvel atualizado com sucesso!";
-            // Recarregar os dados do imóvel para mostrar os valores atualizados no formulário
-            $stmtImovel = $conn->prepare("SELECT * FROM imoveis WHERE id = ? AND corretor_id = ? AND deleted_at IS NULL");
-            $stmtImovel->execute([$id, $corretor['id']]);
-            $imovel = $stmtImovel->fetch(PDO::FETCH_ASSOC);
+    // 5. Processar a atualização quando o formulário convencional for enviado
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao_imovel'])) {
+        if ($estaExcluido) {
+            $erro = "Não é possível editar um imóvel excluído. Restaure-o primeiro.";
         } else {
-            $erro = "Erro ao salvar as alterações.";
+            // Função de formatação de moeda
+            $f = function($v) { 
+                return (float) str_replace(['.', ','], ['', '.'], $v); 
+            };
+
+            $dados = [
+                'proprietario_id'   => (int)$_POST['proprietario_id'],
+                'corretor_id'       => (int)$_POST['corretor_id'],
+                'titulo'            => $_POST['titulo'],
+                'endereco'          => $_POST['endereco'],
+                'bairro'            => $_POST['bairro'],
+                'cep'               => $_POST['cep'],
+                'preco'             => $f($_POST['preco']),
+                'valor_condominio'  => $f($_POST['valor_condominio']),
+                'valor_iptu'        => $f($_POST['valor_iptu']),
+                'area'              => (float)$_POST['area'],
+                'quartos'           => (int)$_POST['quartos'],
+                'suites'            => (int)$_POST['suites'],
+                'banheiros'         => (int)$_POST['banheiros'],
+                'vagas_garagem'     => (int)$_POST['vagas_garagem'],
+                'andar'             => (int)$_POST['andar'],
+                'face'              => $_POST['face'],
+                'tipo'              => $_POST['tipo'],
+                'conservacao'       => $_POST['conservacao'],
+                'regime_marinha'    => $_POST['regime_marinha'],
+                'link_site'         => $_POST['link_site'],
+                'observacoes_gerais'=> $_POST['observacoes_gerais'],
+                'entrega_obra'      => !empty($_POST['entrega_obra']) ? $_POST['entrega_obra'] . "-01" : null,
+                'mobiliado'         => (int)isset($_POST['mobiliado']),
+                'tem_piscina'       => (int)isset($_POST['tem_piscina']),
+                'tem_academia'      => (int)isset($_POST['tem_academia']),
+                'tem_salao_festas'  => (int)isset($_POST['tem_salao_festas']),
+                'tem_espaco_gourmet'=> (int)isset($_POST['tem_espaco_gourmet']),
+                'tem_playground'    => (int)isset($_POST['tem_playground']),
+                'possui_elevador'   => (int)isset($_POST['possui_elevador']),
+                'categoria_registro'=> $_POST['categoria_registro'] ?? 'triagem'
+            ];
+
+            // Monta SET para UPDATE
+            $set = "";
+            foreach ($dados as $key => $val) {
+                $set .= "$key = ?, ";
+            }
+            $sql = "UPDATE imoveis SET " . rtrim($set, ', ') . " WHERE id = ?";
+            $params = array_values($dados);
+            $params[] = $id;
+
+            $stmtUp = $conn->prepare($sql);
+            if ($stmtUp->execute($params)) {
+                $sucesso = "Imóvel atualizado com sucesso!";
+                
+                // Recarregar os dados atualizados do imóvel
+                $stmtImovel = $conn->prepare("SELECT * FROM imoveis WHERE id = ?");
+                $stmtImovel->execute([$id]);
+                $imovel = $stmtImovel->fetch(PDO::FETCH_ASSOC);
+            } else {
+                $erro = "Erro ao salvar as alterações.";
+            }
         }
     }
 
@@ -127,7 +175,7 @@ try {
     <div class="card form-card shadow-sm border-0">
         <div class="card-header bg-dark text-white py-3">
             <h4 class="m-0"><i class="bi bi-pencil-square me-2"></i> Editar Imóvel (Parceiro)</h4>
-            <small class="text-white-50">Corretor: <?= htmlspecialchars($corretor['nome']) ?> (PIN: <?= htmlspecialchars($pin) ?>)</small>
+            <small class="text-white-50">Sessão iniciada via: <?= htmlspecialchars($corretor['nome']) ?> (PIN: <?= htmlspecialchars($pin) ?>)</small>
         </div>
         <div class="card-body p-4">
 
@@ -143,18 +191,61 @@ try {
                 </div>
             <?php endif; ?>
 
+            <?php if ($estaExcluido): ?>
+                <div class="alert alert-warning border-warning d-flex align-items-center justify-content-between p-3 mb-4">
+                    <div>
+                        <i class="bi bi-trash text-danger fs-4 me-3"></i>
+                        <span>Este imóvel está <strong>Excluído (Inativo)</strong>. Os dados abaixo estão congelados.</span>
+                    </div>
+                    <form method="post" class="m-0">
+                        <input type="hidden" name="pin" value="<?= htmlspecialchars($pin) ?>">
+                        <input type="hidden" name="id" value="<?= $id ?>">
+                        <input type="hidden" name="acao_imovel" value="restaurar">
+                        <button type="submit" class="btn btn-warning btn-sm fw-bold px-3">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i> Restaurar Imóvel
+                        </button>
+                    </form>
+                </div>
+            <?php endif; ?>
+
             <form method="post" class="row g-3">
                 <input type="hidden" name="pin" value="<?= htmlspecialchars($pin) ?>">
                 <input type="hidden" name="id" value="<?= $id ?>">
 
-                <!-- Linha 1: Título e Tipo -->
+                <?php $disabled = $estaExcluido ? 'disabled' : ''; ?>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold text-primary"><i class="bi bi-person-badge"></i> Proprietário Vinculado</label>
+                    <select name="proprietario_id" class="form-select bg-white border-primary-subtle" required <?= $disabled ?>>
+                        <option value="">-- Selecione o Proprietário --</option>
+                        <?php foreach ($listaProprietarios as $p): ?>
+                            <option value="<?= $p['id'] ?>" <?= $imovel['proprietario_id'] == $p['id'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($p['nome']) ?> (ID: <?= $p['id'] ?>)
+                            </option>
+                        <?php endforeach; ?> 
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold text-primary"><i class="bi bi-person-gear"></i> Corretor Responsável</label>
+                    <select name="corretor_id" class="form-select bg-white border-primary-subtle" required <?= $disabled ?>>
+                        <option value="">-- Selecione o Corretor --</option>
+                        <?php foreach ($listaCorretores as $c): ?>
+                            <option value="<?= $c['id'] ?>" <?= $imovel['corretor_id'] == $c['id'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($c['nome']) ?> <?= !empty($c['creci']) ? "- CRECI " . htmlspecialchars($c['creci']) : '' ?>
+                            </option>
+                        <?php endforeach; ?> 
+                    </select>
+                </div>
+
+                <hr class="my-4 text-muted opacity-25">
+
                 <div class="col-md-8">
                     <label class="form-label fw-bold">Título / Nome do Imóvel</label>
-                    <input type="text" name="titulo" class="form-control" value="<?= htmlspecialchars($imovel['titulo']) ?>" required>
+                    <input type="text" name="titulo" class="form-control" value="<?= htmlspecialchars($imovel['titulo'] ?? '') ?>" required <?= $disabled ?>>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label fw-bold">Tipo</label>
-                    <select name="tipo" class="form-select">
+                    <select name="tipo" class="form-select" <?= $disabled ?>>
                         <?php 
                         $tipos = ['apartamento', 'casa', 'studio', 'flat', 'comercial', 'terreno'];
                         foreach ($tipos as $t) {
@@ -165,130 +256,161 @@ try {
                     </select>
                 </div>
 
-                <!-- Linha 2: Endereço, Bairro, CEP -->
                 <div class="col-md-5">
                     <label class="form-label">Endereço</label>
-                    <input type="text" name="endereco" class="form-control" value="<?= htmlspecialchars($imovel['endereco']) ?>">
+                    <input type="text" name="endereco" class="form-control" value="<?= htmlspecialchars($imovel['endereco'] ?? '') ?>" <?= $disabled ?>>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Bairro</label>
-                    <input type="text" name="bairro" class="form-control" value="<?= htmlspecialchars($imovel['bairro']) ?>">
+                    <input type="text" name="bairro" class="form-control" value="<?= htmlspecialchars($imovel['bairro'] ?? '') ?>" <?= $disabled ?>>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">CEP</label>
-                    <input type="text" name="cep" class="form-control" value="<?= htmlspecialchars($imovel['cep']) ?>">
+                    <input type="text" name="cep" class="form-control" value="<?= htmlspecialchars($imovel['cep'] ?? '') ?>" <?= $disabled ?>>
                 </div>
 
-                <!-- Linha 3: Preços e valores -->
                 <div class="col-md-3">
                     <label class="form-label fw-bold text-danger">Preço de Venda</label>
-                    <input type="text" name="preco" class="form-control js-money price-input" value="<?= number_format($imovel['preco'], 2, ',', '.') ?>" required>
+                    <input type="text" name="preco" class="form-control js-money price-input" value="<?= number_format($imovel['preco'] ?? 0, 2, ',', '.') ?>" required <?= $disabled ?>>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Valor Condomínio</label>
-                    <input type="text" name="valor_condominio" class="form-control js-money" value="<?= number_format($imovel['valor_condominio'], 2, ',', '.') ?>">
+                    <input type="text" name="valor_condominio" class="form-control js-money" value="<?= number_format($imovel['valor_condominio'] ?? 0, 2, ',', '.') ?>" <?= $disabled ?>>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Valor IPTU</label>
-                    <input type="text" name="valor_iptu" class="form-control js-money" value="<?= number_format($imovel['valor_iptu'], 2, ',', '.') ?>">
+                    <input type="text" name="valor_iptu" class="form-control js-money" value="<?= number_format($imovel['valor_iptu'] ?? 0, 2, ',', '.') ?>" <?= $disabled ?>>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Previsão Entrega (mês/ano)</label>
-                    <input type="month" name="entrega_obra" class="form-control" value="<?= !empty($imovel['entrega_obra']) ? substr($imovel['entrega_obra'], 0, 7) : '' ?>">
+                    <input type="month" name="entrega_obra" class="form-control" value="<?= !empty($imovel['entrega_obra']) ? substr($imovel['entrega_obra'], 0, 7) : '' ?>" <?= $disabled ?>>
                 </div>
 
-                <!-- Linha 4: Dimensões e quartos -->
                 <div class="col-md-2">
                     <label class="form-label">Área (m²)</label>
-                    <input type="number" step="0.01" name="area" class="form-control" value="<?= $imovel['area'] ?>">
+                    <input type="number" step="0.01" name="area" class="form-control" value="<?= $imovel['area'] ?? '' ?>" <?= $disabled ?>>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Quartos</label>
-                    <input type="number" name="quartos" class="form-control" value="<?= $imovel['quartos'] ?>">
+                    <input type="number" name="quartos" class="form-control" value="<?= $imovel['quartos'] ?? '' ?>" <?= $disabled ?>>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Suítes</label>
-                    <input type="number" name="suites" class="form-control" value="<?= $imovel['suites'] ?>">
+                    <input type="number" name="suites" class="form-control" value="<?= $imovel['suites'] ?? '' ?>" <?= $disabled ?>>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Banheiros</label>
-                    <input type="number" name="banheiros" class="form-control" value="<?= $imovel['banheiros'] ?>">
+                    <input type="number" name="banheiros" class="form-control" value="<?= $imovel['banheiros'] ?? '' ?>" <?= $disabled ?>>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Vagas</label>
-                    <input type="number" name="vagas_garagem" class="form-control" value="<?= $imovel['vagas_garagem'] ?>">
+                    <input type="number" name="vagas_garagem" class="form-control" value="<?= $imovel['vagas_garagem'] ?? '' ?>" <?= $disabled ?>>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Andar</label>
-                    <input type="number" name="andar" class="form-control" value="<?= $imovel['andar'] ?>">
+                    <input type="number" name="andar" class="form-control" value="<?= $imovel['andar'] ?? '' ?>" <?= $disabled ?>>
                 </div>
 
-                <!-- Linha 5: Face, Marinha, Conservação, Link e Categoria -->
                 <div class="col-md-3">
                     <label class="form-label">Face</label>
-                    <select name="face" class="form-select">
-                        <option value="nascente" <?= $imovel['face'] == 'nascente' ? 'selected' : '' ?>>Nascente</option>
-                        <option value="poente" <?= $imovel['face'] == 'poente' ? 'selected' : '' ?>>Poente</option>
-                        <option value="norte" <?= $imovel['face'] == 'norte' ? 'selected' : '' ?>>Norte</option>
-                        <option value="sul" <?= $imovel['face'] == 'sul' ? 'selected' : '' ?>>Sul</option>
+                    <select name="face" class="form-select" <?= $disabled ?>>
+                        <option value="nascente" <?= ($imovel['face'] ?? '') == 'nascente' ? 'selected' : '' ?>>Nascente</option>
+                        <option value="poente" <?= ($imovel['face'] ?? '') == 'poente' ? 'selected' : '' ?>>Poente</option>
+                        <option value="norte" <?= ($imovel['face'] ?? '') == 'norte' ? 'selected' : '' ?>>Norte</option>
+                        <option value="sul" <?= ($imovel['face'] ?? '') == 'sul' ? 'selected' : '' ?>>Sul</option>
                     </select>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Regime Marinha</label>
-                    <select name="regime_marinha" class="form-select">
-                        <option value="nenhum" <?= $imovel['regime_marinha'] == 'nenhum' ? 'selected' : '' ?>>Nenhum</option>
-                        <option value="ocupacao" <?= $imovel['regime_marinha'] == 'ocupacao' ? 'selected' : '' ?>>Ocupação</option>
-                        <option value="aforamento" <?= $imovel['regime_marinha'] == 'aforamento' ? 'selected' : '' ?>>Aforamento</option>
+                    <select name="regime_marinha" class="form-select" <?= $disabled ?>>
+                        <option value="nenhum" <?= ($imovel['regime_marinha'] ?? '') == 'nenhum' ? 'selected' : '' ?>>Nenhum</option>
+                        <option value="ocupacao" <?= ($imovel['regime_marinha'] ?? '') == 'ocupacao' ? 'selected' : '' ?>>Ocupação</option>
+                        <option value="aforamento" <?= ($imovel['regime_marinha'] ?? '') == 'aforamento' ? 'selected' : '' ?>>Aforamento</option>
                     </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label class="form-label">Estado de Conservação</label>
-                    <select name="conservacao" class="form-select">
-                        <option value="novo" <?= $imovel['conservacao'] == 'novo' ? 'selected' : '' ?>>Novo</option>
-                        <option value="usado" <?= $imovel['conservacao'] == 'usado' ? 'selected' : '' ?>>Usado</option>
+                    <select name="conservacao" class="form-select" <?= $disabled ?>>
+                        <option value="novo" <?= ($imovel['conservacao'] ?? '') == 'novo' ? 'selected' : '' ?>>Novo</option>
+                        <option value="usado" <?= ($imovel['conservacao'] ?? '') == 'usado' ? 'selected' : '' ?>>Usado</option>
                     </select>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label">Link (WhatsApp/Ref.)</label>
-                    <input type="url" name="link_site" class="form-control" value="<?= htmlspecialchars($imovel['link_site']) ?>">
-                </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label class="form-label fw-bold">Categoria *</label>
-                    <select name="categoria_registro" class="form-select" required>
+                    <select name="categoria_registro" class="form-select" required <?= $disabled ?>>
                         <option value="oficial" <?= ($imovel['categoria_registro'] ?? '') == 'oficial' ? 'selected' : '' ?>>Oficial</option>
                         <option value="triagem" <?= ($imovel['categoria_registro'] ?? 'triagem') == 'triagem' ? 'selected' : '' ?>>Triagem</option>
                     </select>
                 </div>
 
-                <!-- Comodidades -->
+                <div class="col-12">
+                    <label class="form-label fw-bold text-secondary"><i class="bi bi-link-45deg"></i> Link (WhatsApp/Ref.)</label>
+                    <input type="url" name="link_site" class="form-control" value="<?= htmlspecialchars($imovel['link_site'] ?? '') ?>" placeholder="https://" <?= $disabled ?>>
+                </div>
+
                 <div class="col-12">
                     <label class="form-label fw-bold">Infraestrutura e Lazer</label>
                     <div class="p-3 bg-light rounded border d-flex flex-wrap gap-4">
-                        <div class="form-check"><input class="form-check-input" type="checkbox" name="tem_piscina" <?= $imovel['tem_piscina'] ? 'checked' : '' ?>> <label>Piscina</label></div>
-                        <div class="form-check"><input class="form-check-input" type="checkbox" name="tem_academia" <?= $imovel['tem_academia'] ? 'checked' : '' ?>> <label>Academia</label></div>
-                        <div class="form-check"><input class="form-check-input" type="checkbox" name="tem_salao_festas" <?= $imovel['tem_salao_festas'] ? 'checked' : '' ?>> <label>Salão de Festas</label></div>
-                        <div class="form-check"><input class="form-check-input" type="checkbox" name="tem_espaco_gourmet" <?= $imovel['tem_espaco_gourmet'] ? 'checked' : '' ?>> <label>Espaço Gourmet</label></div>
-                        <div class="form-check"><input class="form-check-input" type="checkbox" name="tem_playground" <?= $imovel['tem_playground'] ? 'checked' : '' ?>> <label>Playground</label></div>
-                        <div class="form-check"><input class="form-check-input" type="checkbox" name="possui_elevador" <?= $imovel['possui_elevador'] ? 'checked' : '' ?>> <label>Elevador</label></div>
-                        <div class="form-check"><input class="form-check-input" type="checkbox" name="mobiliado" <?= $imovel['mobiliado'] ? 'checked' : '' ?>> <label>Mobiliado</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" name="tem_piscina" <?= (!empty($imovel['tem_piscina'])) ? 'checked' : '' ?> <?= $disabled ?>> <label>Piscina</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" name="tem_academia" <?= (!empty($imovel['tem_academia'])) ? 'checked' : '' ?> <?= $disabled ?>> <label>Academia</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" name="tem_salao_festas" <?= (!empty($imovel['tem_salao_festas'])) ? 'checked' : '' ?> <?= $disabled ?>> <label>Salão de Festas</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" name="tem_espaco_gourmet" <?= (!empty($imovel['tem_espaco_gourmet'])) ? 'checked' : '' ?> <?= $disabled ?>> <label>Espaço Gourmet</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" name="tem_playground" <?= (!empty($imovel['tem_playground'])) ? 'checked' : '' ?> <?= $disabled ?>> <label>Playground</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" name="possui_elevador" <?= (!empty($imovel['possui_elevador'])) ? 'checked' : '' ?> <?= $disabled ?>> <label>Elevador</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" name="mobiliado" <?= (!empty($imovel['mobiliado'])) ? 'checked' : '' ?> <?= $disabled ?>> <label>Mobiliado</label></div>
                     </div>
                 </div>
 
-                <!-- Observações -->
                 <div class="col-12">
                     <label class="form-label">Observações Gerais</label>
-                    <!-- Mantido name="observacoes_gerais" pois captura o valor correto enviado via POST -->
-                    <textarea name="observacoes_gerais" class="form-control" rows="3"><?= htmlspecialchars($imovel['observacoes_gerais']) ?></textarea>
+                    <textarea name="observacoes_gerais" class="form-control" rows="3" <?= $disabled ?>><?= htmlspecialchars($imovel['observacoes_gerais'] ?? '') ?></textarea>
                 </div>
 
-                <div class="col-12 text-end pt-3">
-                    <a href="portfolio_parceiro.php?pin=<?= urlencode($pin) ?>" class="btn btn-outline-secondary">Cancelar</a>
-                    <button type="submit" class="btn btn-success px-5">Salvar Alterações</button>
+                <div class="col-12 d-flex justify-content-between align-items-center pt-3">
+                    <div>
+                        <?php if (!$estaExcluido): ?>
+                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalExcluir">
+                                <i class="bi bi-trash3 me-1"></i> Excluir Imóvel
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                    <div>
+                        <a href="portfolio_parceiro.php?pin=<?= urlencode($pin) ?>" class="btn btn-outline-secondary me-2">Voltar ao Portfólio</a>
+                        <?php if (!$estaExcluido): ?>
+                            <button type="submit" class="btn btn-success px-5">Salvar Alterações</button>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 </div>
+
+<?php if (!$estaExcluido): ?>
+<div class="modal fade" id="modalExcluir" tabindex="-1" aria-labelledby="modalExcluirLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="modalExcluirLabel"><i class="bi bi-exclamation-triangle-fill me-2"></i> Confirmar Exclusão</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza de que deseja excluir o imóvel <strong>"<?= htmlspecialchars($imovel['titulo'] ?? '') ?>"</strong>?</p>
+                <p class="text-muted small">O imóvel deixará de aparecer nas buscas ativas, mas você poderá reverter essa exclusão nesta mesma página a qualquer momento.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form method="post" style="display: inline;">
+                    <input type="hidden" name="pin" value="<?= htmlspecialchars($pin) ?>">
+                    <input type="hidden" name="id" value="<?= $id ?>">
+                    <input type="hidden" name="acao_imovel" value="excluir">
+                    <button type="submit" class="btn btn-danger">Sim, Excluir</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <script>
     document.querySelectorAll('.js-money').forEach(function(input) {

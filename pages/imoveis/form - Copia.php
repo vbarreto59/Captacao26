@@ -22,6 +22,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     }
 }
 
+// ====================== DUPLICAR IMÓVEL ======================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'duplicar' && $id > 0) {
+    try {
+        // Buscar imóvel original
+        $stmt = $conn->prepare("SELECT * FROM imoveis WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$id]);
+        $original = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$original) {
+            throw new Exception("Imóvel não encontrado.");
+        }
+        
+        // Remover campos que não devem ser copiados
+        unset($original['id']);
+        unset($original['deleted_at']);
+        if (isset($original['created_at'])) unset($original['created_at']);
+        if (isset($original['updated_at'])) unset($original['updated_at']);
+        
+        // Adicionar "DUPE " ao título
+        $original['titulo'] = "DUPE " . $original['titulo'];
+        
+        // Inserir novo imóvel
+        $cols = implode(", ", array_keys($original));
+        $placeholders = implode(", ", array_fill(0, count($original), "?"));
+        $stmt = $conn->prepare("INSERT INTO imoveis ($cols) VALUES ($placeholders)");
+        $stmt->execute(array_values($original));
+        $novo_id = $conn->lastInsertId();
+        
+        // Duplicar corretores parceiros
+        $stmt = $conn->prepare("SELECT corretor_id FROM imovel_parceiros WHERE imovel_id = ?");
+        $stmt->execute([$id]);
+        $parceiros = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        if ($parceiros) {
+            $stmt_par = $conn->prepare("INSERT INTO imovel_parceiros (imovel_id, corretor_id) VALUES (?, ?)");
+            foreach ($parceiros as $c_id) {
+                $stmt_par->execute([$novo_id, $c_id]);
+            }
+        }
+        
+        // Duplicar fotos (copiar arquivos e registrar)
+        $stmt = $conn->prepare("SELECT id, caminho, capa, ordem FROM fotos_imoveis WHERE imovel_id = ?");
+        $stmt->execute([$id]);
+        $fotos_orig = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $target_dir = "../../uploads/fotos_imoveis/";
+        foreach ($fotos_orig as $foto) {
+            $caminho_orig = $target_dir . $foto['caminho'];
+            if (file_exists($caminho_orig)) {
+                $ext = pathinfo($foto['caminho'], PATHINFO_EXTENSION);
+                $novo_nome = uniqid() . "_" . time() . "_dupe." . $ext;
+                $caminho_novo = $target_dir . $novo_nome;
+                if (copy($caminho_orig, $caminho_novo)) {
+                    $stmt_foto = $conn->prepare("INSERT INTO fotos_imoveis (imovel_id, caminho, capa, ordem) VALUES (?, ?, ?, ?)");
+                    $stmt_foto->execute([$novo_id, $novo_nome, $foto['capa'], $foto['ordem']]);
+                }
+            }
+        }
+        
+        // Redirecionar para o formulário do novo imóvel
+        header("Location: form.php?id=$novo_id&msg=duplicado");
+        exit;
+    } catch (Exception $e) {
+        $erro = "Erro ao duplicar: " . $e->getMessage();
+    }
+}
+
 // ====================== GERENCIAMENTO DE FOTOS ======================
 if (isset($_GET['delete_foto']) && is_numeric($_GET['delete_foto']) && $id > 0) {
     $foto_id = (int)$_GET['delete_foto'];
@@ -59,7 +123,7 @@ if (isset($_GET['set_capa']) && is_numeric($_GET['set_capa']) && $id > 0) {
 
 // Inicialização dos campos
 $imovel = [
-    'proprietario_id' => '', 'titulo' => '', 'endereco' => '', 'bairro' => '', 'cidade' => '',
+    'proprietario_id' => '', 'corretor_id' => '', 'titulo' => '', 'endereco' => '', 'bairro' => '', 'cidade' => '',
     'estado' => 'PE', 'cep' => '', 'latitude' => '', 'longitude' => '', 'preco' => 0.00,
     'quartos' => 0, 'suites' => 0, 'banheiros' => 0, 'area' => 0, 'vagas_garagem' => 0,
     'andar' => '', 'face' => 'nascente', 'tipo' => 'apartamento', 
@@ -75,19 +139,19 @@ $imovel = [
     'rip_marinha' => '', 'regime_marinha' => 'nenhum', 'valor_foro_anual' => 0.00, 'laudemio_pago' => 0,
     'aceita_financiamento' => 0, 'aceita_fgts' => 0, 'aceita_permuta' => 0, 'aceita_consorcio' => 0,
     'valor_sinal' => 0.00,
-    // NOVOS CAMPOS
     'reservado' => 0,
     'data_reserva' => '',
     'data_venda' => ''
 ];
 
 $erro = '';
-$sucesso = isset($_GET['msg']) && ($_GET['msg'] == 'sucesso' || $_GET['msg'] == 'foto_excluida' || $_GET['msg'] == 'capa_alterada');
+$sucesso = isset($_GET['msg']) && ($_GET['msg'] == 'sucesso' || $_GET['msg'] == 'foto_excluida' || $_GET['msg'] == 'capa_alterada' || $_GET['msg'] == 'duplicado');
 $msg_texto = '';
 if (isset($_GET['msg'])) {
     if ($_GET['msg'] == 'sucesso') $msg_texto = 'Dados salvos com sucesso!';
     elseif ($_GET['msg'] == 'foto_excluida') $msg_texto = 'Foto excluída com sucesso!';
     elseif ($_GET['msg'] == 'capa_alterada') $msg_texto = 'Foto de capa alterada!';
+    elseif ($_GET['msg'] == 'duplicado') $msg_texto = 'Imóvel duplicado com sucesso!';
 }
 
 // Carrega dados do imóvel se for edição
@@ -98,6 +162,14 @@ if ($id > 0 && empty($_POST)) {
     if ($row) $imovel = array_merge($imovel, $row);
 }
 
+// Busca parceiros vinculados (para edição)
+$parceiros_selecionados = [];
+if ($id > 0) {
+    $stmt_p = $conn->prepare("SELECT corretor_id FROM imovel_parceiros WHERE imovel_id = ?");
+    $stmt_p->execute([$id]);
+    $parceiros_selecionados = $stmt_p->fetchAll(PDO::FETCH_COLUMN);
+}
+
 // Processa o formulário
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
     $titulo = trim($_POST['titulo'] ?? '');
@@ -106,6 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
     } else {
         $dados = [
             'proprietario_id' => !empty($_POST['proprietario_id']) ? (int)$_POST['proprietario_id'] : null,
+            'corretor_id' => !empty($_POST['corretor_id']) ? (int)$_POST['corretor_id'] : null,
             'titulo' => $titulo,
             'endereco' => trim($_POST['endereco'] ?? ''),
             'bairro' => trim($_POST['bairro'] ?? ''),
@@ -154,11 +227,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
             'aceita_permuta' => isset($_POST['aceita_permuta']) ? 1 : 0,
             'aceita_consorcio' => isset($_POST['aceita_consorcio']) ? 1 : 0,
             'valor_sinal' => (float)str_replace(['.', ','], ['', '.'], $_POST['valor_sinal'] ?? 0),
-            // NOVOS CAMPOS
             'reservado' => isset($_POST['reservado']) ? 1 : 0,
             'data_reserva' => !empty($_POST['data_reserva']) ? $_POST['data_reserva'] : null,
             'data_venda' => !empty($_POST['data_venda']) ? $_POST['data_venda'] : null
         ];
+
+        if ($dados['reservado'] == 0) {
+            $dados['data_reserva'] = null;
+            $dados['data_venda'] = null;
+        }
 
         try {
             if ($id > 0) {
@@ -172,6 +249,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
                 $sql = "INSERT INTO imoveis ($cols) VALUES ($plds)";
                 $conn->prepare($sql)->execute(array_values($dados));
                 $id = $conn->lastInsertId();
+            }
+
+            // --- GESTÃO DE PARCEIROS ---
+            $conn->prepare("DELETE FROM imovel_parceiros WHERE imovel_id = ?")->execute([$id]);
+            if (isset($_POST['parceiros']) && is_array($_POST['parceiros'])) {
+                $stmt_parceiro = $conn->prepare("INSERT INTO imovel_parceiros (imovel_id, corretor_id) VALUES (?, ?)");
+                foreach ($_POST['parceiros'] as $corretor_id) {
+                    if (!empty($corretor_id)) {
+                        $stmt_parceiro->execute([$id, (int)$corretor_id]);
+                    }
+                }
             }
             
             // Upload de fotos
@@ -204,11 +292,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
             $erro = "Erro ao salvar: " . $e->getMessage();
         }
     }
-    if (!empty($erro)) {
-        foreach ($dados as $key => $value) {
-            if (array_key_exists($key, $imovel)) $imovel[$key] = $value;
-        }
-    }
 }
 
 // Busca fotos
@@ -225,7 +308,7 @@ if ($id > 0) {
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="text-primary m-0"><?= $modo ?> Imóvel</h2>
-            <small class="text-muted">Cadastro técnico detalhado</small>
+            <small class="text-muted">Cadastro técnico detalhado - CRECI-PE 22003</small>
         </div>
         <div class="d-flex gap-2">
             <span class="badge bg-info text-dark p-2">Versão 2026.1</span>
@@ -233,6 +316,11 @@ if ($id > 0) {
                 <form method="POST" onsubmit="return confirm('Excluir este imóvel permanentemente?')">
                     <input type="hidden" name="acao" value="excluir">
                     <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Excluir</button>
+                </form>
+                <!-- Botão Duplicar -->
+                <form method="POST" onsubmit="return confirm('Duplicar este imóvel? O novo imóvel terá \"DUPE \" no início do título e as fotos serão copiadas.')">
+                    <input type="hidden" name="acao" value="duplicar">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm"><i class="bi bi-files"></i> Duplicar</button>
                 </form>
             <?php endif; ?>
         </div>
@@ -247,7 +335,7 @@ if ($id > 0) {
 
     <form method="post" enctype="multipart/form-data" class="row g-3" id="formImovel">
         
-        <!-- Bloco de Identificação + Reserva/Venda -->
+        <!-- Bloco de Identificação -->
         <div class="col-12">
             <div class="card shadow-sm border-0">
                 <div class="card-body row g-3">
@@ -263,21 +351,23 @@ if ($id > 0) {
                             <option value="suspenso" <?= $imovel['status']=='suspenso'?'selected':'' ?>>Suspenso</option>
                         </select>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">Reservado</label>
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" name="reservado" id="reservado" <?= $imovel['reservado'] ? 'checked' : '' ?>>
-                            <label class="form-check-label" for="reservado">Sim, imóvel reservado</label>
-                        </div>
+
+                    <!-- Corretor Titular -->
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold text-primary">Corretor Titular</label>
+                        <select name="corretor_id" class="form-select">
+                            <option value="">Selecione o corretor responsável...</option>
+                            <?php
+                            $corretores = $conn->query("SELECT id, nome FROM corretores WHERE deleted_at IS NULL ORDER BY nome")->fetchAll();
+                            foreach($corretores as $c):
+                                $selected = ($imovel['corretor_id'] == $c['id']) ? 'selected' : '';
+                                echo "<option value='{$c['id']}' {$selected}>" . htmlspecialchars($c['nome']) . "</option>";
+                            endforeach;
+                            ?>
+                        </select>
+                        <small class="text-muted">Corretor principal responsável pelo imóvel</small>
                     </div>
-                    <div class="col-md-4" id="div_data_reserva" style="<?= $imovel['reservado'] ? '' : 'display:none' ?>">
-                        <label class="form-label">Data da Reserva</label>
-                        <input type="date" name="data_reserva" class="form-control" value="<?= $imovel['data_reserva'] ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Data da Venda (se vendido)</label>
-                        <input type="date" name="data_venda" class="form-control" value="<?= $imovel['data_venda'] ?>">
-                    </div>
+
                     <div class="col-md-6">
                         <label class="form-label fw-bold">Proprietário</label>
                         <select name="proprietario_id" class="form-select" required>
@@ -290,6 +380,21 @@ if ($id > 0) {
                             endforeach;
                             ?>
                         </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Reservado</label>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="reservado" id="reservado" <?= $imovel['reservado'] ? 'checked' : '' ?>>
+                            <label class="form-check-label" for="reservado">Sim, imóvel reservado</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4" id="div_data_reserva" style="<?= $imovel['reservado'] ? '' : 'display:none' ?>">
+                        <label class="form-label">Data da Reserva</label>
+                        <input type="date" name="data_reserva" id="data_reserva" class="form-control" value="<?= $imovel['data_reserva'] ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Data da Venda (se vendido)</label>
+                        <input type="date" name="data_venda" id="data_venda" class="form-control" value="<?= $imovel['data_venda'] ?>">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label text-primary fw-bold">Link do Site / Externo</label>
@@ -326,11 +431,8 @@ if ($id > 0) {
                     <div class="mb-4">
                         <label class="form-label fw-bold">Adicionar novas fotos</label>
                         <input type="file" name="fotos[]" class="form-control" accept="image/jpeg,image/png,image/webp" multiple>
-                        <small class="text-muted">Várias fotos. A primeira será a capa automaticamente.</small>
                     </div>
                     <?php if ($id > 0 && count($fotos) > 0): ?>
-                        <hr>
-                        <label class="form-label fw-bold">Galeria atual (<?= count($fotos) ?> fotos)</label>
                         <div class="row g-3 mt-1">
                             <?php foreach ($fotos as $foto): 
                                 $caminho_imagem = "../../uploads/fotos_imoveis/" . $foto['caminho'];
@@ -343,22 +445,13 @@ if ($id > 0) {
                                             <?php if ($foto['capa'] == 1): ?>
                                                 <span class="badge bg-primary mb-2"><i class="bi bi-star-fill"></i> Capa</span>
                                             <?php else: ?>
-                                                <a href="?id=<?= $id ?>&set_capa=<?= $foto['id'] ?>" class="btn btn-sm btn-outline-secondary w-100 mb-1" onclick="return confirm('Definir como capa?')">
-                                                    <i class="bi bi-star"></i> Definir Capa
-                                                </a>
+                                                <a href="?id=<?= $id ?>&set_capa=<?= $foto['id'] ?>" class="btn btn-sm btn-outline-secondary w-100 mb-1" onclick="return confirm('Definir como capa?')"><i class="bi bi-star"></i> Definir Capa</a>
                                             <?php endif; ?>
-                                            <a href="?id=<?= $id ?>&delete_foto=<?= $foto['id'] ?>" class="btn btn-sm btn-outline-danger w-100" onclick="return confirm('Excluir esta foto?')">
-                                                <i class="bi bi-trash"></i> Excluir
-                                            </a>
+                                            <a href="?id=<?= $id ?>&delete_foto=<?= $foto['id'] ?>" class="btn btn-sm btn-outline-danger w-100" onclick="return confirm('Excluir esta foto?')"><i class="bi bi-trash"></i> Excluir</a>
                                         </div>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
-                        </div>
-                    <?php elseif ($id > 0 && count($fotos) == 0): ?>
-                        <div class="text-center text-muted py-4">
-                            <i class="bi bi-camera fs-1"></i>
-                            <p>Nenhuma foto cadastrada ainda.</p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -374,14 +467,23 @@ if ($id > 0) {
                     <div class="col-md-2"><label class="form-label">Quartos</label><input type="number" name="quartos" class="form-control" value="<?= $imovel['quartos'] ?>"></div>
                     <div class="col-md-2"><label class="form-label">Suítes</label><input type="number" name="suites" class="form-control" value="<?= $imovel['suites'] ?>"></div>
                     <div class="col-md-2"><label class="form-label">Banheiros</label><input type="number" name="banheiros" class="form-control" value="<?= $imovel['banheiros'] ?>"></div>
-                    <div class="col-md-1"><label class="form-label">Vagas</label><input type="number" name="vagas_garagem" class="form-control" value="<?= $imovel['vagas_garagem'] ?>"></div>
-                    <div class="col-md-2"><label class="form-label">Face</label><select name="face" class="form-select"><option value="nascente" <?= $imovel['face']=='nascente'?'selected':'' ?>>Nascente</option><option value="norte" <?= $imovel['face']=='norte'?'selected':'' ?>>Norte</option><option value="sul" <?= $imovel['face']=='sul'?'selected':'' ?>>Sul</option><option value="poente" <?= $imovel['face']=='poente'?'selected':'' ?>>Poente</option></select></div>
+                    <div class="col-md-2"><label class="form-label">Vagas</label><input type="number" name="vagas_garagem" class="form-control" value="<?= $imovel['vagas_garagem'] ?>"></div>
+                    <!-- Campo ANDAR adicionado aqui -->
+                    <div class="col-md-1"><label class="form-label">Andar</label><input type="number" name="andar" class="form-control" value="<?= $imovel['andar'] !== '' ? $imovel['andar'] : '' ?>"></div>
+                    <div class="col-md-2"><label class="form-label">Face</label>
+                        <select name="face" class="form-select">
+                            <option value="nascente" <?= $imovel['face']=='nascente'?'selected':'' ?>>Nascente</option>
+                            <option value="norte" <?= $imovel['face']=='norte'?'selected':'' ?>>Norte</option>
+                            <option value="sul" <?= $imovel['face']=='sul'?'selected':'' ?>>Sul</option>
+                            <option value="poente" <?= $imovel['face']=='poente'?'selected':'' ?>>Poente</option>
+                        </select>
+                    </div>
                     <div class="col-12"><label class="form-label fw-bold">Descrição</label><textarea name="descricao" class="form-control" rows="6"><?= htmlspecialchars($imovel['descricao']) ?></textarea></div>
                 </div>
             </div>
         </div>
 
-        <!-- Sidebar Financeira e Diferenciais -->
+        <!-- Sidebar Financeira -->
         <div class="col-md-4">
             <div class="card shadow-sm border-0 bg-light mb-3">
                 <div class="card-header fw-bold">Valores</div>
@@ -398,16 +500,20 @@ if ($id > 0) {
                     $diferenciais = [
                         'tem_piscina' => 'Piscina', 'tem_academia' => 'Academia', 'tem_salao_festas' => 'Salão de Festas',
                         'tem_espaco_gourmet' => 'Espaço Gourmet', 'tem_playground' => 'Playground', 'possui_elevador' => 'Elevador',
-                        'possui_moveis_planejados' => 'Móveis Planejados', 'gas_encanado' => 'Gás Encanado', 'mobiliado' => 'Mobiliado'
+                        'possui_moveis_planejados' => 'Móveis Planejados', 'gas_encanado' => 'Gás Encanado', 'mobiliado' => 'Mobiliado',
+                        'agua_inclusa_condominio' => 'Água inclusa no condomínio', 'gas_incluso_condominio' => 'Gás incluso no condomínio'
                     ];
                     foreach($diferenciais as $key => $label): ?>
-                        <div class="form-check"><input class="form-check-input" type="checkbox" name="<?= $key ?>" <?= $imovel[$key]?'checked':'' ?>><label class="form-check-label small"><?= $label ?></label></div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="<?= $key ?>" <?= $imovel[$key]?'checked':'' ?>>
+                            <label class="form-check-label small"><?= $label ?></label>
+                        </div>
                     <?php endforeach; ?>
                 </div>
             </div>
         </div>
 
-        <!-- Gestão Interna, Marinha e Condições de Pagamento (resumido, igual ao original) -->
+        <!-- Gestão Interna -->
         <div class="col-12">
             <div class="card shadow-sm border-0 border-start border-4 border-info mb-3">
                 <div class="card-header bg-white fw-bold text-info">Gestão Interna</div>
@@ -418,6 +524,33 @@ if ($id > 0) {
             </div>
         </div>
 
+        <!-- Corretores Parceiros -->
+        <div class="col-12">
+            <div class="card shadow-sm border-0 border-start border-4 border-primary mb-3">
+                <div class="card-header bg-white fw-bold text-primary"><i class="bi bi-people"></i> Corretores Parceiros</div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <?php 
+                        $corretores = $conn->query("SELECT id, nome FROM corretores WHERE deleted_at IS NULL ORDER BY nome")->fetchAll();
+                        for ($i = 0; $i < 3; $i++): 
+                            $valor_atual = $parceiros_selecionados[$i] ?? '';
+                        ?>
+                        <div class="col-md-4">
+                            <label class="form-label small">Parceiro <?= $i + 1 ?></label>
+                            <select name="parceiros[]" class="form-select">
+                                <option value="">Nenhum</option>
+                                <?php foreach($corretores as $c): ?>
+                                    <option value="<?= $c['id'] ?>" <?= $valor_atual == $c['id'] ? 'selected' : '' ?>><?= htmlspecialchars($c['nome']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endfor; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documentação e Marinha -->
         <div class="col-12">
             <div class="card shadow-sm border-0 border-start border-4 border-warning mb-3">
                 <div class="card-header bg-white fw-bold">Documentação / Marinha</div>
@@ -463,18 +596,19 @@ document.querySelectorAll('.js-money').forEach(el => el.addEventListener('input'
 document.querySelectorAll('.js-cep').forEach(el => el.addEventListener('input', e => { let v = e.target.value.replace(/\D/g,""); if(v.length>5) v=v.replace(/^(\d{5})(\d)/,"$1-$2"); e.target.value=v.substring(0,9); }));
 // Coordenadas
 const latField = document.getElementById('lat_field'); if(latField) latField.addEventListener('input', function(e) { const val = e.target.value; if(val.includes(',')) { const parts = val.split(','); const lat = parts[0].trim(); const lng = parts[1].trim(); if(!isNaN(lat)&&!isNaN(lng)) { document.getElementById('hidden_lat').value = lat; document.getElementById('hidden_lng').value = lng; } } });
-// Toggle do campo data_reserva
+
 const reservadoCheck = document.getElementById('reservado');
 const divDataReserva = document.getElementById('div_data_reserva');
 if(reservadoCheck) {
     reservadoCheck.addEventListener('change', function() {
         divDataReserva.style.display = this.checked ? 'block' : 'none';
+        if(!this.checked) { document.getElementById('data_reserva').value = ''; }
     });
 }
 </script>
 
 <style>
-body{background:#f8f9fa}.card{border-radius:12px}#formImovel{margin-bottom:100px}
+body{background:#f8f9fa}.card{border-radius:12px}#formImovel{margin-bottom:100px}.fixed-bottom{z-index:1030}
 </style>
 
 <?php require_once '../../includes/footer.php'; ?>
