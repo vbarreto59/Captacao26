@@ -4,6 +4,23 @@ session_start();
 require_once '../../includes/auth.php';
 require_once '../../conn_cap.php';
 
+// ==========================================
+// NOVAS FASES ADICIONADAS: Contato Feito e Procurar Imóvel
+// ==========================================
+$fases_lista = [
+    'Novo',
+    'Tentativa de Contato',
+    'Contato Feito',
+    'Procurar Imóvel',
+    'Agendar Visita',
+    'Visita Agendada',
+    'Visita Realizada',
+    'Analisando',
+    'Proposta',
+    'Fechado',
+    'Perdido'
+];
+
 // Garantir colunas necessárias
 try {
     $conn->exec("ALTER TABLE leads ADD COLUMN IF NOT EXISTS primeiro_nome VARCHAR(100) DEFAULT NULL");
@@ -12,6 +29,7 @@ try {
     $conn->exec("ALTER TABLE leads ADD COLUMN IF NOT EXISTS deleted_at DATETIME DEFAULT NULL");
     $conn->exec("ALTER TABLE leads ADD COLUMN IF NOT EXISTS contatar_hoje TINYINT(1) DEFAULT 0");
     $conn->exec("ALTER TABLE leads ADD COLUMN IF NOT EXISTS ultima_interacao DATETIME DEFAULT NULL");
+    $conn->exec("ALTER TABLE leads ADD COLUMN IF NOT EXISTS tipo_pagamento VARCHAR(20) DEFAULT NULL");
 } catch (PDOException $e) { /* colunas já existem */ }
 
 // ==========================================
@@ -76,6 +94,30 @@ if (isset($_POST['action'])) {
         echo json_encode($response);
         exit;
     }
+    // Atualizar tipo_pagamento
+    if ($_POST['action'] == 'update_tipo_pagamento') {
+        $id = (int)($_POST['id'] ?? 0);
+        $tipo = trim($_POST['tipo_pagamento'] ?? '');
+        if ($id > 0) {
+            $stmt = $conn->prepare("UPDATE leads SET tipo_pagamento = ? WHERE id = ? AND deleted_at IS NULL");
+            $success = $stmt->execute([$tipo, $id]);
+            $response = ['status' => $success ? 'success' : 'error'];
+        }
+        echo json_encode($response);
+        exit;
+    }
+    // Atualizar fase
+    if ($_POST['action'] == 'update_fase') {
+        $id = (int)($_POST['id'] ?? 0);
+        $fase = trim($_POST['fase'] ?? '');
+        if ($id > 0 && !empty($fase)) {
+            $stmt = $conn->prepare("UPDATE leads SET fase_funil = ?, ultima_interacao = NOW() WHERE id = ? AND deleted_at IS NULL");
+            $success = $stmt->execute([$fase, $id]);
+            $response = ['status' => $success ? 'success' : 'error'];
+        }
+        echo json_encode($response);
+        exit;
+    }
     if ($_POST['action'] == 'toggle_share') {
         $id = (int)($_POST['id'] ?? 0);
         $valor = (int)($_POST['value'] ?? 0);
@@ -119,7 +161,7 @@ if (isset($_POST['action'])) {
         echo json_encode($response);
         exit;
     }
-    // Resetar dias parados (atualizar última interação)
+    // Resetar dias parados
     if ($_POST['action'] == 'update_last_interaction') {
         $id = (int)($_POST['id'] ?? 0);
         if ($id > 0) {
@@ -130,7 +172,7 @@ if (isset($_POST['action'])) {
         echo json_encode($response);
         exit;
     }
-    // NOVA AÇÃO: Marcar lead como Perdido
+    // Marcar como Perdido
     if ($_POST['action'] == 'marcar_perdido') {
         $id = (int)($_POST['id'] ?? 0);
         if ($id > 0) {
@@ -141,8 +183,72 @@ if (isset($_POST['action'])) {
         echo json_encode($response);
         exit;
     }
+
+    // Duplicar lead
+    if ($_POST['action'] == 'duplicate_lead') {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id > 0) {
+            $stmt = $conn->prepare("SELECT * FROM leads WHERE id = ? AND deleted_at IS NULL");
+            $stmt->execute([$id]);
+            $original = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($original) {
+                unset($original['id']);
+                unset($original['created_at']);
+                unset($original['updated_at']);
+                unset($original['ultima_interacao']);
+                $original['nome'] = 'Cópia de ' . $original['nome'];
+                $original['telefone'] = '';
+                $original['email'] = '';
+                $original['primeiro_nome'] = '';
+                $original['contatar_hoje'] = 0;
+                $original['compartilhado_parceiro'] = 0;
+                $original['favorito'] = 0;
+                $original['deleted_at'] = null;
+                $columns = implode(", ", array_keys($original));
+                $placeholders = ":" . implode(", :", array_keys($original));
+                $stmtIns = $conn->prepare("INSERT INTO leads ($columns) VALUES ($placeholders)");
+                $stmtIns->execute($original);
+                $newId = $conn->lastInsertId();
+                $conn->prepare("UPDATE leads SET nome = ? WHERE id = ?")->execute(["LD".str_pad($newId,3,'0',STR_PAD_LEFT)."-".$original['nome'], $newId]);
+                $stmtIm = $conn->prepare("SELECT imovel_id FROM lead_imoveis WHERE lead_id = ?");
+                $stmtIm->execute([$id]);
+                $imoveis = $stmtIm->fetchAll(PDO::FETCH_COLUMN);
+                foreach ($imoveis as $im_id) {
+                    $conn->prepare("INSERT INTO lead_imoveis (lead_id, imovel_id) VALUES (?, ?)")->execute([$newId, $im_id]);
+                }
+                $response = ['status' => 'success', 'new_id' => $newId];
+            } else {
+                $response = ['status' => 'error', 'message' => 'Lead original não encontrado ou está deletado'];
+            }
+        } else {
+            $response = ['status' => 'error', 'message' => 'ID inválido'];
+        }
+        echo json_encode($response);
+        exit;
+    }
+
     echo json_encode($response);
     exit;
+}
+
+// ==========================================
+// FUNÇÃO PARA CORES DA FASE (atualizada)
+// ==========================================
+function getFaseColor($fase) {
+    $cores = [
+        'Novo'                  => 'bg-info text-dark',
+        'Tentativa de Contato'  => 'bg-warning text-dark',
+        'Contato Feito'         => 'bg-primary text-white',
+        'Procurar Imóvel'       => 'bg-teal text-white',
+        'Agendar Visita'        => 'bg-purple text-white',
+        'Visita Agendada'       => 'bg-success text-white',
+        'Visita Realizada'      => 'bg-dark text-white',
+        'Analisando'            => 'bg-secondary text-white',
+        'Proposta'              => 'bg-danger text-white',
+        'Fechado'               => 'bg-success text-white',
+        'Perdido'               => 'bg-light text-muted'
+    ];
+    return $cores[$fase] ?? 'bg-light text-dark';
 }
 
 // ==========================================
@@ -151,6 +257,7 @@ if (isset($_POST['action'])) {
 $busca = $_GET['busca'] ?? '';
 $show_deleted = isset($_GET['show_deleted']) && $_GET['show_deleted'] == '1';
 $filtro_valor_max = isset($_GET['valor_max_filtro']) && is_numeric($_GET['valor_max_filtro']) ? (float)$_GET['valor_max_filtro'] : null;
+$filtro_favorito = isset($_GET['favorito']) && $_GET['favorito'] == '1';
 
 $where = "WHERE 1=1 AND fase_funil <> 'Perdido' ";
 $params = [];
@@ -169,9 +276,13 @@ if ($filtro_valor_max !== null && $filtro_valor_max > 0) {
     $where .= " AND valor_max >= ?";
     $params[] = $filtro_valor_max;
 }
+if ($filtro_favorito) {
+    $where .= " AND favorito = 1";
+}
 
-$sql = "SELECT id, nome, primeiro_nome, valor_max, obs_parceiros, observacoes, 
+$sql = "SELECT id, nome, primeiro_nome, tipo_pagamento, quartos_min, valor_max, obs_parceiros, observacoes, 
                compartilhado_parceiro, favorito, contatar_hoje, deleted_at,
+               fase_funil,
                COALESCE(DATEDIFF(NOW(), ultima_interacao), 0) as dias_parado,
                created_at
         FROM leads $where ORDER BY id DESC";
@@ -185,7 +296,6 @@ $valores_distinct = $stmtDist->fetchAll(PDO::FETCH_COLUMN);
 
 require_once '../../includes/header.php';
 
-// Função para definir a classe do badge conforme os dias parados
 function getDiasBadgeClass($dias) {
     if ($dias == 0) return 'bg-success';
     if ($dias <= 3) return 'bg-warning text-dark';
@@ -202,12 +312,11 @@ function getDiasBadgeClass($dias) {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
     <style>
-        /* (mantido o mesmo CSS original, sem alterações) */
         body { background-color: #f8f9fa; font-family: 'Segoe UI', system-ui, sans-serif; }
         .card-custom { border-radius: 16px; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        .obs-cell, .nome-cell, .nome-completo-cell, .valor-max-cell, .observacoes-cell { cursor: pointer; transition: background-color 0.2s; }
+        .obs-cell, .nome-cell, .nome-completo-cell, .valor-max-cell, .observacoes-cell, .tipo-pagamento-cell, .fase-cell { cursor: pointer; transition: background-color 0.2s; }
         .obs-cell:hover, .observacoes-cell:hover { background-color: #fff3cd; text-decoration: underline; }
-        .nome-cell:hover, .nome-completo-cell:hover, .valor-max-cell:hover { background-color: #e2f0ff; text-decoration: underline; }
+        .nome-cell:hover, .nome-completo-cell:hover, .valor-max-cell:hover, .tipo-pagamento-cell:hover, .fase-cell:hover { background-color: #e2f0ff; text-decoration: underline; }
         .row-shared { background-color: #f0f7ff !important; border-left: 4px solid #0d6efd; }
         .row-deleted { background-color: #f8d7da !important; opacity: 0.7; text-decoration: line-through; color: #6c757d; }
         .row-favorito td { background-color: #e3f2fd !important; }
@@ -221,7 +330,48 @@ function getDiasBadgeClass($dias) {
         .reset-dias-icon:hover { transform: scale(1.15); }
         .btn-perdido { background-color: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; transition: all 0.2s; }
         .btn-perdido:hover { background-color: #bb2d3b; transform: scale(1.02); }
+        .btn-favorito-filtro { background: #fff; border: 1px solid #ddd; border-radius: 20px; padding: 5px 14px; color: #6c757d; transition: 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; }
+        .btn-favorito-filtro:hover { background: #f0f0f0; }
+        .btn-favorito-filtro.active { background: #ffc107; border-color: #ffc107; color: #212529; font-weight: 600; }
+        /* Cores personalizadas para as novas fases */
+        .bg-teal { background-color: #20c997 !important; color: white !important; }
+        .bg-purple { background-color: #6f42c1 !important; color: white !important; }
+        /* ... demais estilos existentes ... */
+        #tabelaLeads {
+            table-layout: fixed;
+            width: 100%;
+            min-width: 1200px;
+        }
+        #tabelaLeads th, #tabelaLeads td {
+            padding: 6px 4px !important;
+            vertical-align: middle;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        #tabelaLeads th:nth-child(1), #tabelaLeads td:nth-child(1) { width: 4%; }
+        #tabelaLeads th:nth-child(2), #tabelaLeads td:nth-child(2) { width: 7%; }
+        #tabelaLeads th:nth-child(3), #tabelaLeads td:nth-child(3) { width: 9%; }
+        #tabelaLeads th:nth-child(4), #tabelaLeads td:nth-child(4) { width: 8%; }
+        #tabelaLeads th:nth-child(5), #tabelaLeads td:nth-child(5) { width: 7%; }
+        #tabelaLeads th:nth-child(6), #tabelaLeads td:nth-child(6) { width: 4%; }
+        #tabelaLeads th:nth-child(7), #tabelaLeads td:nth-child(7) { width: 12%; }
+        #tabelaLeads th:nth-child(8), #tabelaLeads td:nth-child(8) { width: 8%; }
+        #tabelaLeads th:nth-child(9), #tabelaLeads td:nth-child(9) { width: 11%; }
+        #tabelaLeads th:nth-child(10), #tabelaLeads td:nth-child(10) { width: 11%; }
+        #tabelaLeads th:nth-child(11), #tabelaLeads td:nth-child(11) { width: 7%; }
+        #tabelaLeads th:nth-child(12), #tabelaLeads td:nth-child(12) { width: 7%; }
+        #tabelaLeads th:nth-child(13), #tabelaLeads td:nth-child(13) { width: 10%; }
+        .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        #tabelaLeads td .badge { font-size: 0.7rem; padding: 4px 6px; }
+        #tabelaLeads td .form-check { margin: 0; padding-left: 1.5em; }
+        #tabelaLeads td .form-check-input { margin-left: -1.2em; }
+        #tabelaLeads td .btn-sm { font-size: 0.65rem; padding: 2px 6px; }
+        #tabelaLeads td .btn-perdido { font-size: 0.6rem; padding: 2px 6px; }
+        #tabelaLeads td .btn-duplicate { font-size: 0.6rem; padding: 2px 6px; }
+        .obs-cell, .observacoes-cell { font-size: 0.75rem; line-height: 1.3; }
+        .tipo-pagamento-cell { display: inline-block; padding: 0 4px; border-radius: 4px; }
         @media (max-width: 768px) {
+            #tabelaLeads { table-layout: auto; min-width: unset; }
             #tabelaLeads thead { display: none; }
             #tabelaLeads tbody, #tabelaLeads tr, #tabelaLeads td { display: block; width: 100%; }
             #tabelaLeads tr { background: #fff; border-radius: 12px; margin-bottom: 16px; padding: 12px; border: 1px solid #e9ecef; position: relative; }
@@ -235,6 +385,7 @@ function getDiasBadgeClass($dias) {
             .form-check { display: inline-block; }
             .favorito-star { font-size: 1.1rem; }
             .dataTables_filter input { width: 100%; }
+            #tabelaLeads td .btn-sm { font-size: 0.7rem; padding: 4px 8px; }
         }
         .filter-bar { background: white; border-radius: 20px; padding: 12px 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .filter-select { min-width: 180px; }
@@ -255,11 +406,13 @@ function getDiasBadgeClass($dias) {
                 <span class="badge bg-success">📞 Contatar Hoje = fundo verde</span>
                 <span class="badge bg-warning text-dark">🟠 1-3 dias</span>
                 <span class="badge bg-danger">🔴 >3 dias parado</span>
-                <i class="bi bi-check-circle-fill text-success"></i> clique para zerar
+                <i class="bi bi-check-circle-fill text-success"></i> clique para zerar |
+                <i class="bi bi-files text-info"></i> Dupe = duplicar lead |
+                <i class="bi bi-credit-card"></i> Clique no tipo de pagamento para editar |
+                <i class="bi bi-arrow-repeat"></i> Clique na fase para alterar
             </p>
         </div>
         <div class="d-flex gap-2 w-100 w-md-auto">
-            <!-- Botão Novo Lead -->
             <a href="lead_form.php" class="btn btn-success shadow-sm"><i class="bi bi-plus-circle"></i> Novo Lead</a>
             <a href="leads3.php" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Voltar</a>
         </div>
@@ -288,23 +441,29 @@ function getDiasBadgeClass($dias) {
                 <input class="form-check-input" type="checkbox" name="show_deleted" value="1" id="showDeleted" <?= $show_deleted ? 'checked' : '' ?> onchange="this.form.submit()">
                 <label class="form-check-label" for="showDeleted">Mostrar excluídos</label>
             </div>
-            <?php if ($busca || $filtro_valor_max || $show_deleted): ?>
-                <a href="listagem_obs_parceiros.php" class="btn btn-outline-danger btn-sm">Limpar filtros</a>
+            <a href="<?= htmlspecialchars('?' . http_build_query(array_merge($_GET, ['favorito' => $filtro_favorito ? '0' : '1'], ['show_deleted' => $show_deleted ? '1' : '0']))) ?>" 
+               class="btn-favorito-filtro <?= $filtro_favorito ? 'active' : '' ?>">
+                <i class="bi <?= $filtro_favorito ? 'bi-star-fill' : 'bi-star' ?>"></i> 
+                <?= $filtro_favorito ? 'Favoritos' : 'Todos' ?>
+            </a>
+            <?php if ($busca || $filtro_valor_max || $show_deleted || $filtro_favorito): ?>
+                <a href="parceiros_obs.php" class="btn btn-outline-danger btn-sm">Limpar filtros</a>
             <?php endif; ?>
         </form>
     </div>
 
-    <!-- Tabela / Cards -->
+    <!-- Tabela -->
     <div class="card card-custom shadow-sm">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table id="tabelaLeads" class="table table-hover align-middle mb-0 w-100">
+                <table id="tabelaLeads" class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
                             <th>#</th>
                             <th>Dias Parado</th>
                             <th>Criado em</th>
-                            <th>Valor Máximo</th>
+                            <th>Valor / Pagamento</th>
+                            <th>Fase</th>
                             <th><i class="bi bi-star-fill"></i></th>
                             <th>Nome Completo</th>
                             <th>Primeiro Nome</th>
@@ -338,6 +497,11 @@ function getDiasBadgeClass($dias) {
                             $valor_max_raw = $lead['valor_max'] ?? 0;
                             $valor_max_formatado = $valor_max_raw > 0 ? 'R$ ' . number_format($valor_max_raw, 0, ',', '.') : '—';
                             $observacoes = $lead['observacoes'] ?? '';
+                            $tipo_pagamento = $lead['tipo_pagamento'] ?? '';
+                            $quartos_min = $lead['quartos_min'] ?? '';
+                            
+                            $fase = $lead['fase_funil'] ?? 'Novo';
+                            $fase_badge_class = getFaseColor($fase);
                         ?>
                         <tr id="row-lead-<?= $lead['id'] ?>" class="<?= $row_class ?>">
                             <td data-label="#"><?= $index + 1 ?></td>
@@ -350,8 +514,27 @@ function getDiasBadgeClass($dias) {
                                 <?php endif; ?>
                             </td>
                             <td data-label="Criado em" class="text-muted small"><?= $created_at_formatado ?></td>
-                            <td data-label="Valor Máximo" class="fw-semibold valor-max-cell" data-id="<?= $lead['id'] ?>" data-valor="<?= $valor_max_raw ?>">
-                                <?= $valor_max_formatado ?>
+                            <td data-label="Valor / Pagamento" class="fw-semibold">
+                                <div class="valor-max-cell" data-id="<?= $lead['id'] ?>" data-valor="<?= $valor_max_raw ?>" style="cursor: pointer;">
+                                    <?= $valor_max_formatado ?>
+                                </div>
+                                <span class="tipo-pagamento-cell text-muted" 
+                                      style="font-size: 0.65rem; cursor: pointer; display: inline-block; padding: 2px 4px; border-radius: 4px;"
+                                      data-id="<?= $lead['id'] ?>" 
+                                      data-tipo="<?= htmlspecialchars($tipo_pagamento) ?>">
+                                    <?php if (!empty($tipo_pagamento)): ?>
+                                        <i class="bi bi-credit-card"></i> <?= htmlspecialchars($tipo_pagamento) ?>
+                                    <?php else: ?>
+                                        <i class="bi bi-plus-circle text-muted"></i> Adicionar pagamento
+                                    <?php endif; ?>
+                                    <br>
+                                    <?php if (!empty($quartos_min)): ?>
+                                        <i class="bi bi-door-open"></i> <?= htmlspecialchars($quartos_min) ?> qtos
+                                    <?php endif; ?>
+                                </span>
+                            </td>
+                            <td data-label="Fase" class="fase-cell" data-id="<?= $lead['id'] ?>" data-fase="<?= htmlspecialchars($fase) ?>" style="cursor: pointer;">
+                                <span class="badge <?= $fase_badge_class ?> px-3 py-2 w-100 text-center"><?= htmlspecialchars($fase) ?></span>
                             </td>
                             <td data-label="Favorito" class="text-center">
                                 <i class="bi <?= $is_favorito ? 'bi-star-fill text-warning' : 'bi-star text-muted' ?> favorito-star" data-id="<?= $lead['id'] ?>"></i>
@@ -363,7 +546,7 @@ function getDiasBadgeClass($dias) {
                                 <i class="bi bi-person-bounding-box text-info me-1"></i><?= htmlspecialchars($lead['primeiro_nome'] ?: '—') ?>
                             </td>
                             <td data-label="Obs Gerais" class="observacoes-cell" data-id="<?= $lead['id'] ?>" data-obs="<?= htmlspecialchars($observacoes) ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
-                                <small class="d-block text-muted fw-bold mb-1 text-uppercase" style="font-size: 0.75rem;">Obs Gerais</small>
+                                <small class="d-block text-muted fw-bold mb-1 text-uppercase" style="font-size: 0.65rem;">Obs Gerais</small>
                                 <?php if (!empty($observacoes)): ?>
                                     <i class="bi bi-chat-text text-secondary me-1"></i><?= nl2br(htmlspecialchars($observacoes)) ?>
                                 <?php else: ?>
@@ -371,7 +554,7 @@ function getDiasBadgeClass($dias) {
                                 <?php endif; ?>
                             </td>
                             <td data-label="Obs Parceiros" class="obs-cell" data-id="<?= $lead['id'] ?>" data-obs="<?= htmlspecialchars($lead['obs_parceiros'] ?? '') ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
-                                <small class="d-block text-muted fw-bold mb-1 text-uppercase" style="font-size: 0.75rem;">Obs Parceiros</small>
+                                <small class="d-block text-muted fw-bold mb-1 text-uppercase" style="font-size: 0.65rem;">Obs Parceiros</small>
                                 <?php if (!empty($lead['obs_parceiros'])): ?>
                                     <i class="bi bi-shield-shaded text-warning me-1"></i><?= nl2br(htmlspecialchars($lead['obs_parceiros'])) ?>
                                 <?php else: ?>
@@ -381,7 +564,7 @@ function getDiasBadgeClass($dias) {
                             <td data-label="Compartilhar" class="text-center">
                                 <div class="form-check form-switch d-inline-block align-middle">
                                     <input class="form-check-input toggle-share" type="checkbox" id="share-<?= $lead['id'] ?>" data-id="<?= $lead['id'] ?>" <?= $is_shared ? 'checked' : '' ?> <?= $is_deleted ? 'disabled' : '' ?>>
-                                    <label class="form-check-label small text-muted ms-1" for="share-<?= $lead['id'] ?>">Compartilhar</label>
+                                    <label class="form-check-label small text-muted ms-1" for="share-<?= $lead['id'] ?>">Comp.</label>
                                 </div>
                             </td>
                             <td data-label="Contatar Hoje" class="text-center">
@@ -394,6 +577,9 @@ function getDiasBadgeClass($dias) {
                                 <?php if ($is_deleted): ?>
                                     <button class="btn btn-sm btn-outline-success btn-restore" data-id="<?= $lead['id'] ?>"><i class="bi bi-arrow-counterclockwise"></i></button>
                                 <?php else: ?>
+                                    <button class="btn btn-sm btn-outline-info btn-duplicate ms-1" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>" title="Duplicar lead">
+                                        <i class="bi bi-files"></i> Dupe
+                                    </button>
                                     <button class="btn btn-sm btn-outline-danger btn-soft-delete" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>"><i class="bi bi-trash"></i></button>
                                     <button class="btn btn-sm btn-perdido ms-1" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
                                         <i class="bi bi-x-octagon"></i> Perdido
@@ -411,8 +597,11 @@ function getDiasBadgeClass($dias) {
         <i class="bi bi-info-circle"></i> Clique nos campos destacados para editar. 
         <i class="bi bi-star-fill text-warning"></i> Favorito = fundo azul claro. 
         <i class="bi bi-telephone-fill"></i> Contatar Hoje = fundo verde claro.
-        <i class="bi bi-check-circle-fill text-success"></i> Clique no check para zerar dias parados (atualiza última interação).
-        <i class="bi bi-x-octagon text-danger"></i> "Perdido" move o lead para a fase "Perdido" e o oculta da lista.
+        <i class="bi bi-check-circle-fill text-success"></i> Clique no check para zerar dias parados.
+        <i class="bi bi-x-octagon text-danger"></i> "Perdido" move o lead para a fase "Perdido".
+        <i class="bi bi-files text-info"></i> "Dupe" duplica o lead.
+        <i class="bi bi-credit-card"></i> Clique no tipo de pagamento para escolher "Financiamento" ou "À Vista".
+        <i class="bi bi-arrow-repeat"></i> Clique na fase para alterar (inclui "Contato Feito" e "Procurar Imóvel").
     </div>
 </div>
 
@@ -433,6 +622,58 @@ function getDiasBadgeClass($dias) {
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header bg-success text-white"><h5 class="modal-title">Editar valor máximo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="text" class="form-control bg-light" id="valorMaxLeadNome" readonly><input type="number" id="valorMaxInput" class="form-control mt-2" step="1" min="0"><input type="hidden" id="valorMaxLeadId"></div><div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button id="btnSalvarValorMax" class="btn btn-success">Salvar</button></div></div></div>
 </div>
 
+<!-- Modal Tipo Pagamento -->
+<div class="modal fade" id="modalTipoPagamento" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-credit-card me-2"></i>Editar Tipo de Pagamento</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" class="form-control bg-light mb-3" id="tipoPagamentoLeadNome" readonly placeholder="Lead">
+                <label class="fw-semibold mb-1">Selecione o tipo de pagamento:</label>
+                <select id="tipoPagamentoSelect" class="form-select">
+                    <option value="">Nenhum</option>
+                    <option value="Financiamento">Financiamento</option>
+                    <option value="À Vista">À Vista</option>
+                </select>
+                <input type="hidden" id="tipoPagamentoLeadId">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button id="btnSalvarTipoPagamento" class="btn btn-primary">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Fase (com todas as fases atualizadas) -->
+<div class="modal fade" id="modalFase" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>Alterar Fase do Lead</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" class="form-control bg-light mb-3" id="faseLeadNome" readonly placeholder="Lead">
+                <label class="fw-semibold mb-1">Selecione a nova fase:</label>
+                <select id="faseSelect" class="form-select">
+                    <?php foreach ($fases_lista as $f): ?>
+                        <option value="<?= $f ?>"><?= $f ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="hidden" id="faseLeadId">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button id="btnSalvarFase" class="btn btn-primary">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
@@ -445,13 +686,32 @@ $(document).ready(function() {
         "order": [[0, 'asc']],
         "columnDefs": [{ "type": "num", "targets": 0 }],
         "pageLength": 100,
-        "responsive": false
+        "responsive": false,
+        "scrollX": true
     });
 
     function formatMoney(value) {
         let num = parseFloat(value);
         if (isNaN(num)) num = 0;
         return 'R$ ' + num.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+
+    // Mapeamento de cores para as fases (incluindo as novas)
+    const faseColors = {
+        'Novo': 'bg-info text-dark',
+        'Tentativa de Contato': 'bg-warning text-dark',
+        'Contato Feito': 'bg-primary text-white',
+        'Procurar Imóvel': 'bg-teal text-white',
+        'Agendar Visita': 'bg-purple text-white',
+        'Visita Agendada': 'bg-success text-white',
+        'Visita Realizada': 'bg-dark text-white',
+        'Analisando': 'bg-secondary text-white',
+        'Proposta': 'bg-danger text-white',
+        'Fechado': 'bg-success text-white',
+        'Perdido': 'bg-light text-muted'
+    };
+    function getFaseColor(fase) {
+        return faseColors[fase] || 'bg-light text-dark';
     }
 
     // ==================== Resetar dias parados ====================
@@ -686,6 +946,102 @@ $(document).ready(function() {
             btn.prop('disabled', false).html('<i class="bi bi-x-octagon"></i> Perdido');
         });
     });
+
+    // ==================== DUPLICAR LEAD ====================
+    $(document).on('click', '.btn-duplicate', function() {
+        let id = $(this).data('id');
+        let nome = $(this).data('nome');
+        if (!confirm(`Duplicar o lead "${nome}"? As informações de perfil serão copiadas, mas telefone e e-mail serão zerados para edição posterior.`)) return;
+        let btn = $(this);
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+        $.post(currentScript, { action: 'duplicate_lead', id: id }, function(res) {
+            if (res.status === 'success') {
+                alert(`Lead duplicado com sucesso! Novo ID: ${res.new_id}. A página será recarregada.`);
+                location.reload();
+            } else {
+                alert('Erro ao duplicar: ' + (res.message || 'Tente novamente.'));
+                btn.prop('disabled', false).html('<i class="bi bi-files"></i> Dupe');
+            }
+        }).fail(() => {
+            alert('Erro de comunicação com o servidor.');
+            btn.prop('disabled', false).html('<i class="bi bi-files"></i> Dupe');
+        });
+    });
+
+    // ==================== EDITAR TIPO DE PAGAMENTO ====================
+    $(document).on('click', '.tipo-pagamento-cell', function() {
+        if ($(this).closest('tr').hasClass('row-deleted')) { alert('Lead excluído.'); return; }
+        let id = $(this).data('id');
+        let tipo = $(this).data('tipo');
+        let nome = $(this).closest('tr').find('.nome-completo-cell').data('nome') || 'Lead';
+        
+        $('#tipoPagamentoLeadId').val(id);
+        $('#tipoPagamentoLeadNome').val(nome);
+        $('#tipoPagamentoSelect').val(tipo || '');
+        $('#modalTipoPagamento').modal('show');
+    });
+
+    $('#btnSalvarTipoPagamento').on('click', function() {
+        let id = $('#tipoPagamentoLeadId').val();
+        let tipo = $('#tipoPagamentoSelect').val().trim();
+        let btn = $(this);
+        
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+        $.post(currentScript, { action: 'update_tipo_pagamento', id: id, tipo_pagamento: tipo }, function(res) {
+            if (res.status === 'success') {
+                let celula = $('.tipo-pagamento-cell[data-id="' + id + '"]');
+                if (tipo) {
+                    celula.html('<i class="bi bi-credit-card"></i> ' + tipo);
+                } else {
+                    celula.html('<i class="bi bi-plus-circle text-muted"></i> Adicionar pagamento');
+                }
+                celula.data('tipo', tipo);
+                $('#modalTipoPagamento').modal('hide');
+                $('#row-lead-' + id).css('background-color', '#d4edda').delay(500).queue(function(n) { $(this).css('background-color', ''); n(); });
+            } else {
+                alert('Erro ao salvar tipo de pagamento.');
+            }
+        }).always(() => {
+            btn.prop('disabled', false).html('Salvar');
+        });
+    });
+
+    // ==================== EDITAR FASE (com suporte às novas fases) ====================
+    $(document).on('click', '.fase-cell', function() {
+        if ($(this).closest('tr').hasClass('row-deleted')) { alert('Lead excluído.'); return; }
+        let id = $(this).data('id');
+        let fase = $(this).data('fase');
+        let nome = $(this).closest('tr').find('.nome-completo-cell').data('nome') || 'Lead';
+        
+        $('#faseLeadId').val(id);
+        $('#faseLeadNome').val(nome);
+        $('#faseSelect').val(fase);
+        $('#modalFase').modal('show');
+    });
+
+    $('#btnSalvarFase').on('click', function() {
+        let id = $('#faseLeadId').val();
+        let fase = $('#faseSelect').val();
+        let btn = $(this);
+        
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+        $.post(currentScript, { action: 'update_fase', id: id, fase: fase }, function(res) {
+            if (res.status === 'success') {
+                let celula = $('.fase-cell[data-id="' + id + '"]');
+                let badge = celula.find('.badge');
+                let newClass = getFaseColor(fase);
+                badge.text(fase).removeClass().addClass('badge px-3 py-2 w-100 text-center ' + newClass);
+                celula.data('fase', fase);
+                $('#modalFase').modal('hide');
+                $('#row-lead-' + id).css('background-color', '#d4edda').delay(500).queue(function(n) { $(this).css('background-color', ''); n(); });
+            } else {
+                alert('Erro ao salvar fase.');
+            }
+        }).always(() => {
+            btn.prop('disabled', false).html('Salvar');
+        });
+    });
+
 });
 </script>
 </body>

@@ -248,6 +248,10 @@ foreach ($leads as $l) {
                         <i class="bi bi-trash3-fill"></i> Limpar Lista
                     </button>
                 <?php endif; ?>
+    <!-- NOVO BOTÃO: Lista Compacta (abre em nova aba) -->
+    <a href="contatos_hoje_print.php" target="_blank" class="btn btn-outline-light fw-semibold d-flex align-items-center justify-content-center gap-1 shadow-sm py-2">
+        <i class="bi bi-file-text-fill"></i> Lista Compacta
+    </a>                
                 <a href="leads.php" class="btn btn-light fw-semibold text-primary d-flex align-items-center justify-content-center gap-1 shadow-sm py-2">
                     <i class="bi bi-arrow-left-short fs-5"></i> Voltar à Gestão
                 </a>
@@ -704,3 +708,4 @@ $(document).ready(function() {
 
 </body>
 </html>
+<!--  -->

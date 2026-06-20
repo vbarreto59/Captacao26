@@ -188,16 +188,15 @@ if (!defined('BASE_URL')) {
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/parceiros_obs.php" target="_blank">Leads 1</a
                         >
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads3.php">Leads 2</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_kanban.php">Kanban</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_funil.php">Funil</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/favoritos.php"><i class="bi bi-star-fill text-warning"></i></a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_ppasso.php">LPP</a>
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/contatos_hoje.php" target="_blank">Hoje</a>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/contatos_hoje.php" target="_blank">Hoje</a>                        
 
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/parceiros_view.php" target="_blank">Resumo</a
-                        >
-                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/parceiros_obs.php" target="_blank">ResObs</a
-                        >
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_funil.php">Funil</a>
+           
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_ppasso.php">LPP</a>
+
+
+            
+
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/parceiros_ccolar.php" target="_blank">CopiarColar</a
                         >
 

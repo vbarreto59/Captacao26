@@ -144,7 +144,11 @@ $imovel = [
     'valor_sinal' => 0.00,
     'reservado' => 0,
     'data_reserva' => '',
-    'data_venda' => ''
+    'data_venda' => '',
+    // NOVOS CAMPOS
+    'distancia_mar_metros' => 0,
+    'valor_taxa_extra' => 0.00,
+    'taxa_extra_limite' => ''
 ];
 
 $erro = '';
@@ -246,7 +250,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['acao'])) {
             'valor_sinal' => (float)str_replace(['.', ','], ['', '.'], $_POST['valor_sinal'] ?? 0),
             'reservado' => isset($_POST['reservado']) ? 1 : 0,
             'data_reserva' => !empty($_POST['data_reserva']) ? $_POST['data_reserva'] : null,
-            'data_venda' => !empty($_POST['data_venda']) ? $_POST['data_venda'] : null
+            'data_venda' => !empty($_POST['data_venda']) ? $_POST['data_venda'] : null,
+            // NOVOS CAMPOS
+            'distancia_mar_metros' => (float)str_replace(',', '.', $_POST['distancia_mar_metros'] ?? 0),
+            'valor_taxa_extra' => (float)str_replace(['.', ','], ['', '.'], $_POST['valor_taxa_extra'] ?? 0),
+            'taxa_extra_limite' => !empty($_POST['taxa_extra_limite']) ? $_POST['taxa_extra_limite'] : null
         ];
 
         if ($dados['reservado'] == 0) {
@@ -505,19 +513,27 @@ if ($id > 0) {
                             <option value="poente" <?= $imovel['face']=='poente'?'selected':'' ?>>Poente</option>
                         </select>
                     </div>
+                    <!-- Campo Distância do Mar mantido aqui -->
+                    <div class="col-md-3">
+                        <label class="form-label">Distância do Mar (metros)</label>
+                        <input type="number" name="distancia_mar_metros" class="form-control" value="<?= $imovel['distancia_mar_metros'] ?>" step="1">
+                    </div>
                     <div class="col-12"><label class="form-label fw-bold">Descrição</label><textarea name="descricao" class="form-control" rows="6"><?= htmlspecialchars($imovel['descricao']) ?></textarea></div>
                 </div>
             </div>
         </div>
 
-        <!-- Sidebar Financeira -->
+        <!-- Sidebar Financeira (Valores com fundo cinza claro) -->
         <div class="col-md-4">
             <div class="card shadow-sm border-0 bg-light mb-3">
                 <div class="card-header fw-bold">Valores</div>
                 <div class="card-body">
                     <div class="mb-3"><label class="form-label fw-bold">Preço</label><input type="text" name="preco" class="form-control js-money" value="<?= number_format($imovel['preco'], 2, ',', '.') ?>"></div>
                     <div class="mb-3"><label class="form-label small">Condomínio</label><input type="text" name="valor_condominio" class="form-control js-money" value="<?= number_format($imovel['valor_condominio'], 2, ',', '.') ?>"></div>
-                    <div><label class="form-label small">IPTU</label><input type="text" name="valor_iptu" class="form-control js-money" value="<?= number_format($imovel['valor_iptu'], 2, ',', '.') ?>"></div>
+                    <div class="mb-3"><label class="form-label small">IPTU</label><input type="text" name="valor_iptu" class="form-control js-money" value="<?= number_format($imovel['valor_iptu'], 2, ',', '.') ?>"></div>
+                    <!-- Campos movidos para cá -->
+                    <div class="mb-3"><label class="form-label small">Valor Taxa Extra</label><input type="text" name="valor_taxa_extra" class="form-control js-money" value="<?= number_format($imovel['valor_taxa_extra'], 2, ',', '.') ?>"></div>
+                    <div class="mb-3"><label class="form-label small">Limite da Taxa Extra (data)</label><input type="date" name="taxa_extra_limite" class="form-control" value="<?= htmlspecialchars($imovel['taxa_extra_limite']) ?>"></div>
                 </div>
             </div>
             <div class="card shadow-sm border-0 mb-3">

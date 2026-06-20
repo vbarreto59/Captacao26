@@ -29,7 +29,6 @@ if (isset($_POST['action'])) {
         $stmt = $conn->prepare("UPDATE leads SET observacoes = ?, ultima_interacao = NOW() WHERE id = ?");
         echo json_encode(['status' => $stmt->execute([$obs, $id]) ? 'success' : 'error']);
     }
-    // NOVO: atualizar observações do parceiro
     elseif ($_POST['action'] == 'update_obs_parceiros') {
         $obs = $_POST['obs_parceiros'];
         $stmt = $conn->prepare("UPDATE leads SET obs_parceiros = ?, ultima_interacao = NOW() WHERE id = ?");
@@ -133,6 +132,20 @@ function formatarCaracteristicas($lead) {
     return implode(' • ', $parts);
 }
 
+/**
+ * Função auxiliar para construir URLs de filtro, preservando todos os parâmetros GET
+ * exceto o que se deseja alterar.
+ */
+function buildFilterUrl($keyToChange, $newValue) {
+    $params = $_GET;
+    if ($newValue === '') {
+        unset($params[$keyToChange]);
+    } else {
+        $params[$keyToChange] = $newValue;
+    }
+    return '?' . http_build_query($params);
+}
+
 // ==========================================
 // CONSULTA PRINCIPAL
 // ==========================================
@@ -227,13 +240,11 @@ require_once '../../includes/header.php';
         <h2 class="fw-bold text-primary mb-0">Gestão de Leads</h2>
         <p class="text-muted small mb-0"><?= count($lista) ?> leads na lista atual</p>
     </div>
-    <!-- Alterado para flex-column: a busca fica em cima e o botão vai para a linha de baixo -->
     <div class="d-flex flex-column align-items-end gap-2 w-100 w-md-auto">
         <form action="" method="GET" class="d-flex gap-2 w-100">
             <input type="text" name="busca" class="form-control" placeholder="Pesquisar..." value="<?= htmlspecialchars($busca) ?>">
             <button type="submit" class="btn btn-light border"><i class="bi bi-search"></i></button>
         </form>
-        <!-- O botão agora cai para a linha de baixo naturalmente. d-block e w-100 no mobile, automático no desktop -->
         <a href="lead_form.php" class="btn btn-primary shadow-sm w-100 w-md-auto"><i class="bi bi-plus-lg"></i> Novo</a>
     </div>
 </div>
@@ -247,7 +258,7 @@ require_once '../../includes/header.php';
     </div>
 
     <!-- Filtros de Temperatura + Limpar -->
-    <div class="d-flex flex-wrap gap-2 mb-4 align-items-center filtros-container">
+    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center filtros-container">
         <small class="text-muted fw-bold text-uppercase">Temperatura:</small>
         <a href="?fase=<?= urlencode($fase_ativa) . ($busca ? "&busca=$busca" : "") ?>" class="filter-temp-link <?= $temp_ativa == '' ? 'active' : '' ?>">Todos</a>
         <?php foreach ($temps_lista as $key => $label): ?>
@@ -257,6 +268,14 @@ require_once '../../includes/header.php';
         <?php if ($fase_ativa || $temp_ativa || $busca): ?>
             <a href="leads3.php" class="btn-limpar-filtros ms-auto"><i class="bi bi-x-circle"></i> Limpar Filtros</a>
         <?php endif; ?>
+    </div>
+
+    <!-- FILTRO RÁPIDO PARA tipo_desejo (Compra / Aluguel) -->
+    <div class="d-flex flex-wrap gap-2 mb-4 align-items-center">
+        <small class="text-muted fw-bold text-uppercase">Intenção:</small>
+        <a href="<?= buildFilterUrl('tipo_desejo', '') ?>" class="filter-temp-link <?= ($filtro_tipo_desejo == '') ? 'active' : '' ?>">Todos</a>
+        <a href="<?= buildFilterUrl('tipo_desejo', 'Compra') ?>" class="filter-temp-link <?= ($filtro_tipo_desejo == 'Compra') ? 'active' : '' ?>">💰 Compra</a>
+        <a href="<?= buildFilterUrl('tipo_desejo', 'Aluguel') ?>" class="filter-temp-link <?= ($filtro_tipo_desejo == 'Aluguel') ? 'active' : '' ?>">📄 Aluguel</a>
     </div>
 
     <!-- Filtros Avançados -->
@@ -412,23 +431,24 @@ require_once '../../includes/header.php';
         <td style="width: 150px;">
             <span class="badge <?= getFaseColor($l['fase_funil']) ?> w-100 py-2 mb-1"><?= $l['fase_funil'] ?: 'Novo' ?></span>
             <div class="text-center small text-muted fw-bold"><?= $l['dias_parado'] ?> dias parado</div>
-          </td>
-          <td>
+           </td>
+           <td>
             <div class="name-row-container d-flex align-items-center gap-2">
                 <i class="bi <?= $l['favorito'] ? 'bi-star-fill text-warning' : 'bi-star text-muted' ?> btn-favorito fs-5" data-id="<?= $l['id'] ?>" style="cursor: pointer;"></i>
                 <span class="fw-bold fs-5 text-dark"><?= htmlspecialchars($l['nome']) ?></span>
+                <?php if (!empty($l['tipo_desejo'])): ?>
+                    <span class="badge bg-secondary ms-2"><?= htmlspecialchars($l['tipo_desejo']) ?></span>
+                <?php endif; ?>
                 <i class="bi bi-journal-text btn-obs fs-4" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" data-obs="<?= htmlspecialchars($l['observacoes']) ?>"></i>
                 <span class="ms-auto badge bg-white text-dark border shadow-sm py-2 px-3 small">Teto: <strong><?= $v_max ?></strong></span>
             </div>
             <div class="obs-preview btn-obs" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" data-obs="<?= htmlspecialchars($l['observacoes']) ?>" id="obs-preview-<?= $l['id'] ?>">
                 <?= !empty($l['observacoes']) ? nl2br(htmlspecialchars($l['observacoes'])) : '<span class="text-muted italic">Clique aqui para adicionar observações...</span>' ?>
             </div>
-            <!-- NOVO: Prévia de obs_parceiros -->
             <div class="obs-parceiros-preview btn-obs-parceiros" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" data-obs="<?= htmlspecialchars($l['obs_parceiros'] ?? '') ?>" id="obs-parceiros-preview-<?= $l['id'] ?>">
                 <i class="bi bi-shield-shaded"></i> 
                 <?= !empty($l['obs_parceiros']) ? nl2br(htmlspecialchars($l['obs_parceiros'])) : '<span class="text-muted italic">Clique para adicionar observações para parceiros...</span>' ?>
             </div>
-            <!-- Fim do novo -->
             <div class="hist-container">
                 <?php if (!empty($l['resumo_historico'])): 
                     $hists = explode('||', $l['resumo_historico']);
@@ -442,7 +462,7 @@ require_once '../../includes/header.php';
                 <input class="form-check-input toggle-hoje" type="checkbox" data-id="<?= $l['id'] ?>" <?= $l['contatar_hoje'] ? 'checked' : '' ?>>
                 <label class="small text-muted">Contatar hoje</label>
             </div>
-          </td>
+           </td>
           <td class="caracteristicas-cell">
             <?php if (!empty($caracteristicas_resumo)): ?>
                 <div class="d-flex flex-wrap gap-1">
@@ -470,7 +490,7 @@ require_once '../../includes/header.php';
                     <i class="bi bi-geo-alt"></i> <?= htmlspecialchars(mb_strimwidth($l['preferencia_localizacao'], 0, 40, '...')) ?>
                 </div>
             <?php endif; ?>
-          </td>
+           </td>
           <td class="text-center">
             <div class="d-flex justify-content-center gap-2 mb-2">
                 <span class="temp-badge <?= $temp == 'Quente' ? 'active' : '' ?>" data-id="<?= $l['id'] ?>" data-temp="Quente">🔥</span>
@@ -483,12 +503,12 @@ require_once '../../includes/header.php';
                     <option value="<?= $op ?>" <?= ($l['proximo_passo'] == $op ? 'selected' : '') ?>><?= $op ?></option>
                 <?php endforeach; ?>
             </select>
-          </td>
+           </td>
           <td class="text-center">
             <div class="form-check form-switch d-inline-block">
                 <input class="form-check-input toggle-share" type="checkbox" data-id="<?= $l['id'] ?>" <?= $is_shared ? 'checked' : '' ?>>
             </div>
-          </td>
+           </td>
           <td class="text-end pe-3">
             <div class="btn-group shadow-sm w-100 mb-2">
                 <button class="btn btn-sm btn-outline-warning btn-agendar" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>"><i class="bi bi-calendar-plus"></i></button>
@@ -511,8 +531,8 @@ require_once '../../includes/header.php';
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
-          </td>
-      </tr>
+           </td>
+       </tr>
     <?php endforeach; ?>
                         </tbody>
                     </table>
@@ -543,6 +563,9 @@ require_once '../../includes/header.php';
                     <div class="d-flex align-items-center gap-2">
                         <i class="bi <?= $l['favorito'] ? 'bi-star-fill text-warning' : 'bi-star text-muted' ?> btn-favorito fs-5" data-id="<?= $l['id'] ?>" style="cursor: pointer;"></i>
                         <span class="fw-bold text-dark"><?= htmlspecialchars($l['nome']) ?></span>
+                        <?php if (!empty($l['tipo_desejo'])): ?>
+                            <span class="badge bg-secondary ms-2"><?= htmlspecialchars($l['tipo_desejo']) ?></span>
+                        <?php endif; ?>
                     </div>
                     <div class="small text-muted">#<?= $l['id'] ?> · Teto: <strong><?= $v_max ?></strong></div>
                 </div>
@@ -608,7 +631,6 @@ require_once '../../includes/header.php';
                         <?= !empty($l['observacoes']) ? nl2br(htmlspecialchars($l['observacoes'])) : '<span class="text-muted italic">Clique para adicionar observações...</span>' ?>
                     </div>
                 </div>
-                <!-- NOVO: Obs Parceiros no card mobile -->
                 <div class="mt-2">
                     <div class="lead-card-label mb-1">Observações para Parceiros</div>
                     <div class="obs-parceiros-preview btn-obs-parceiros" data-id="<?= $l['id'] ?>" data-nome="<?= htmlspecialchars($l['nome']) ?>" data-obs="<?= htmlspecialchars($l['obs_parceiros'] ?? '') ?>" id="obs-parceiros-preview-card-<?= $l['id'] ?>">
@@ -616,7 +638,6 @@ require_once '../../includes/header.php';
                         <?= !empty($l['obs_parceiros']) ? nl2br(htmlspecialchars($l['obs_parceiros'])) : '<span class="text-muted italic">Clique para adicionar observações para parceiros...</span>' ?>
                     </div>
                 </div>
-                <!-- Fim do novo -->
                 <div class="mt-3">
                     <div class="lead-card-label mb-1">Histórico</div>
                     <div class="hist-container" style="margin-top: 0;">
@@ -663,7 +684,6 @@ require_once '../../includes/header.php';
     </div>
 </div>
 
-<!-- NOVO: Modal para obs_parceiros -->
 <div class="modal fade" id="modalObsParceiros" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
@@ -777,7 +797,7 @@ $(document).ready(function() {
         }, 'json');
     });
 
-    // NOVO: Observações para parceiros
+    // Observações para parceiros
     $(document).on('click', '.btn-obs-parceiros', function() {
         const id = $(this).data('id');
         const nome = $(this).data('nome');
@@ -794,7 +814,6 @@ $(document).ready(function() {
         const obs = $('#obs_parceiros_texto').val();
         $.post('leads3.php', { action: 'update_obs_parceiros', id: id, obs_parceiros: obs }, function(res) {
             if (res.status === 'success') {
-                // Atualiza os dados nos elementos de prévia
                 $(`.btn-obs-parceiros[data-id="${id}"]`).data('obs', obs);
                 $(`#obs-parceiros-preview-${id}`).html(obs ? obs.replace(/\n/g, '<br>') : '<span class="text-muted italic">Clique para adicionar observações para parceiros...</span>');
                 $(`#obs-parceiros-preview-card-${id}`).html(obs ? obs.replace(/\n/g, '<br>') : '<span class="text-muted italic">Clique para adicionar observações para parceiros...</span>');
@@ -876,4 +895,3 @@ $(document).ready(function() {
 <?php require_once '../../includes/footer.php'; ?>
 </body>
 </html>
-<!-- leads3.php -->

@@ -99,6 +99,7 @@ $leads_list = $conn->query("SELECT id, nome FROM leads ORDER BY nome ASC")->fetc
 $bairros = $conn->query("SELECT DISTINCT bairro FROM imoveis WHERE categoria_registro = 'oficial' AND deleted_at IS NULL AND bairro IS NOT NULL AND bairro != '' ORDER BY bairro ASC")->fetchAll(PDO::FETCH_COLUMN);
 
 // 2. CONSULTA PRINCIPAL (IMÓVEIS + FOTO + FINANCEIRO + PARCEIROS + CORRETOR TITULAR)
+// NOTA: O SELECT * já inclui os novos campos (portaria_24h, distancia_mar_metros, valor_taxa_extra, taxa_extra_limite)
 $sql = "SELECT i.*, i.link_site, p.nome as nome_proprietario,
         c_titular.nome as nome_corretor_titular,
         (SELECT caminho FROM fotos_imoveis WHERE imovel_id = i.id ORDER BY capa DESC, id ASC LIMIT 1) AS foto_capa,
@@ -190,9 +191,8 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
         gap: 12px;
         font-size: 0.75rem;
         font-weight: 600;
-        color: #495057; /* Cor padrão para Cond, IPTU e Sinal */
+        color: #495057;
     }
-    /* Destaque vermelho exclusivo apenas para os itens inclusos */
     .valores-detalhe .taxas-linha .destaque-incluso {
         color: #dc3545;
         font-weight: 700;
@@ -371,6 +371,10 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
                         <?php if($im['possui_moveis_planejados'] == 1): ?>
                             <div class="carac-item"><i class="bi bi-grid-3x3-gap-fill"></i> Móveis planejados</div>
                         <?php endif; ?>
+                        <!-- NOVO CAMPO: Distância do Mar -->
+                        <?php if(!empty($im['distancia_mar_metros']) && $im['distancia_mar_metros'] > 0): ?>
+                            <div class="carac-item"><i class="bi bi-water"></i> Distância do mar: <?= number_format($im['distancia_mar_metros'], 0) ?> m</div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="valores-detalhe">
@@ -396,6 +400,17 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
                                 <?php endif; ?>
                             </div>
                         <?php endif; ?>
+                        <!-- NOVOS CAMPOS: Taxa Extra e Limite -->
+                        <?php if(($im['valor_taxa_extra'] ?? 0) > 0 || !empty($im['taxa_extra_limite'])): ?>
+                            <div class="taxas-linha mt-1 pt-1 border-top">
+                                <?php if(($im['valor_taxa_extra'] ?? 0) > 0): ?>
+                                    <span class="text-danger"><i class="bi bi-cash"></i> Taxa extra: R$ <?= number_format($im['valor_taxa_extra'], 2, ',', '.') ?></span>
+                                <?php endif; ?>
+                                <?php if(!empty($im['taxa_extra_limite'])): ?>
+                                    <span class="text-muted"><i class="bi bi-hourglass-split"></i> Limite: <?= htmlspecialchars($im['taxa_extra_limite']) ?></span>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="comodidades-badge">
@@ -416,6 +431,10 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
                         <?php endif; ?>
                         <?php if($im['tem_playground'] == 1): ?>
                             <span class="badge-comod"><i class="bi bi-tree"></i> Playground</span>
+                        <?php endif; ?>
+                        <!-- NOVO CAMPO: Portaria 24h -->
+                        <?php if(isset($im['portaria_24h']) && $im['portaria_24h'] == 1): ?>
+                            <span class="badge-comod"><i class="bi bi-shield-lock"></i> Portaria 24h</span>
                         <?php endif; ?>
                     </div>
 
@@ -584,7 +603,7 @@ function abrirModalDescricao(t) { textoAtual = t.replace(/\\n/g, '\n'); document
 function abrirModalRespostaRapida(t) { textoAtual = t.replace(/\\n/g, '\n'); document.getElementById('tituloModal').innerText = "Resposta Rápida"; document.getElementById('corpoTexto').innerText = textoAtual; new bootstrap.Modal(document.getElementById('modalTexto')).show(); }
 function copiar() { navigator.clipboard.writeText(textoAtual); alert("Copiado!"); }
 function abrirModalDespesas(id, tit) { document.getElementById('despesa_imovel_id').value = id; document.getElementById('span_imovel_titulo').innerText = tit; carregarDespesas(id); new bootstrap.Modal(document.getElementById('modalDespesas')).show(); }
-function carregarDespesas(id) { fetch(`?action=listar_despesas&imovel_id=${id}`).then(r=>r.json()).then(data=>{ let h = ''; data.forEach(d => { h += `<tr><td>${d.data_despesa.split('-').reverse().join('/')}</td><td>${d.tipo}</td><td class="text-danger fw-bold">R$ ${parseFloat(d.valor).toLocaleString('pt-BR')}</td><td><button class="btn text-danger btn-sm" onclick="excluirD(${d.id},${id})">X</button></td></tr>`; }); document.getElementById('listaDespesasCorpo').innerHTML = h; }); }
+function carregarDespesas(id) { fetch(`?action=listar_despesas&imovel_id=${id}`).then(r=>r.json()).then(data=>{ let h = ''; data.forEach(d => { h += `<tr><td>${d.data_despesa.split('-').reverse().join('/')}</td><td>${d.tipo}</td><td class="text-danger fw-bold">R$ ${parseFloat(d.valor).toLocaleString('pt-BR')}</td><td><button class="btn text-danger btn-sm" onclick="excluirD(${d.id},${id})">X</button></td>`; }); document.getElementById('listaDespesasCorpo').innerHTML = h; }); }
 document.getElementById('formNovaDespesa').onsubmit = function(e){ e.preventDefault(); fetch('?action=salvar_despesa',{method:'POST', body:new FormData(this)}).then(()=>carregarDespesas(document.getElementById('despesa_imovel_id').value)); this.reset(); };
 function excluirD(id, iid){ if(confirm('Excluir?')) fetch(`?action=excluir_despesa&id=${id}`).then(()=>carregarDespesas(iid)); }
 function abrirModalAgendamento(id, tit) { document.getElementById('modal_imovel_id').value = id; new bootstrap.Modal(document.getElementById('modalAgendarVisita')).show(); }

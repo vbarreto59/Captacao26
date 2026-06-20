@@ -73,57 +73,66 @@ $opcoes_passos = ["Ligar para qualificar", "Agendar visita", "Enviar simulação
 $fases_lista = ['Novo', 'Tentativa de Contato', 'Contato Feito', 'Visita Agendada', 'Visita Realizada', 'Analisando', 'Proposta', 'Fechado', 'Perdido'];
 $temps_lista = ['Quente' => '🔥 Quente', 'Morno' => '⚖️ Morno', 'Frio' => '❄️ Frio'];
 
-$temp_ativa = $_GET['temperatura'] ?? '';
-$fase_ativa = $_GET['fase'] ?? '';
-$busca = $_GET['busca'] ?? '';
+// Verifica se o modo "ignorar todos os filtros" está ativo (inclui leads deletados)
+$ignorar_filtros = isset($_GET['ignorar_filtros']) && $_GET['ignorar_filtros'] == '1';
 
-// Filtros avançados
-$filtro_tipo_desejo = $_GET['tipo_desejo'] ?? '';
-$filtro_tipologia = $_GET['tipologia'] ?? '';
-$filtro_quartos_valor = isset($_GET['quartos_valor']) && is_numeric($_GET['quartos_valor']) ? (int)$_GET['quartos_valor'] : null;
-$filtro_quartos_operador = $_GET['quartos_operador'] ?? 'minimo';
-$filtro_valor_max_min = isset($_GET['valor_max_min']) && is_numeric(str_replace(['.', ','], ['', ''], $_GET['valor_max_min'])) ? (float)str_replace(['.', ','], ['', ''], $_GET['valor_max_min']) : null;
-$filtro_valor_max_max = isset($_GET['valor_max_max']) && is_numeric(str_replace(['.', ','], ['', ''], $_GET['valor_max_max'])) ? (float)str_replace(['.', ','], ['', ''], $_GET['valor_max_max']) : null;
-$filtro_vista_mar = $_GET['vista_mar'] ?? '';
-$filtro_pe_na_areia = isset($_GET['pe_na_areia']) ? 1 : null;
-$filtro_piscina = isset($_GET['piscina']) ? 1 : null;
-$filtro_garagem = isset($_GET['garagem_coberta']) ? 1 : null;
-$filtro_mobiliado = isset($_GET['mobiliado']) ? 1 : null;
-$filtro_varanda = isset($_GET['varanda']) ? 1 : null;
+$temp_ativa = !$ignorar_filtros ? ($_GET['temperatura'] ?? '') : '';
+$fase_ativa = !$ignorar_filtros ? ($_GET['fase'] ?? '') : '';
+$busca = !$ignorar_filtros ? ($_GET['busca'] ?? '') : '';
 
-$where = "WHERE 1=1  AND deleted_at IS NULL ";
-$params = [];
+// Filtros avançados (apenas se não estiver ignorando filtros)
+$filtro_tipo_desejo = !$ignorar_filtros ? ($_GET['tipo_desejo'] ?? '') : '';
+$filtro_tipologia = !$ignorar_filtros ? ($_GET['tipologia'] ?? '') : '';
+$filtro_quartos_valor = (!$ignorar_filtros && isset($_GET['quartos_valor']) && is_numeric($_GET['quartos_valor'])) ? (int)$_GET['quartos_valor'] : null;
+$filtro_quartos_operador = !$ignorar_filtros ? ($_GET['quartos_operador'] ?? 'minimo') : 'minimo';
+$filtro_valor_max_min = (!$ignorar_filtros && isset($_GET['valor_max_min']) && is_numeric(str_replace(['.', ','], ['', ''], $_GET['valor_max_min']))) ? (float)str_replace(['.', ','], ['', ''], $_GET['valor_max_min']) : null;
+$filtro_valor_max_max = (!$ignorar_filtros && isset($_GET['valor_max_max']) && is_numeric(str_replace(['.', ','], ['', ''], $_GET['valor_max_max']))) ? (float)str_replace(['.', ','], ['', ''], $_GET['valor_max_max']) : null;
+$filtro_vista_mar = !$ignorar_filtros ? ($_GET['vista_mar'] ?? '') : '';
+$filtro_pe_na_areia = (!$ignorar_filtros && isset($_GET['pe_na_areia'])) ? 1 : null;
+$filtro_piscina = (!$ignorar_filtros && isset($_GET['piscina'])) ? 1 : null;
+$filtro_garagem = (!$ignorar_filtros && isset($_GET['garagem_coberta'])) ? 1 : null;
+$filtro_mobiliado = (!$ignorar_filtros && isset($_GET['mobiliado'])) ? 1 : null;
+$filtro_varanda = (!$ignorar_filtros && isset($_GET['varanda'])) ? 1 : null;
 
-// Filtros básicos
-if ($fase_ativa) {
-    $where .= " AND fase_funil = ?";
-    $params[] = $fase_ativa;
-}
+// Se estiver ignorando filtros, a cláusula WHERE será apenas "WHERE 1=1" (sem deleted_at e sem nenhum filtro)
+if ($ignorar_filtros) {
+    $where = "WHERE 1=1";
+    $params = [];
+} else {
+    $where = "WHERE 1=1 AND deleted_at IS NULL ";
+    $params = [];
 
-if ($temp_ativa) { $where .= " AND temperatura = ?"; $params[] = $temp_ativa; }
-if ($busca) { $where .= " AND (nome LIKE ? OR telefone LIKE ?)"; $params[] = "%$busca%"; $params[] = "%$busca%"; }
-
-// Filtros avançados
-if ($filtro_tipo_desejo) { $where .= " AND tipo_desejo = ?"; $params[] = $filtro_tipo_desejo; }
-if ($filtro_tipologia) { $where .= " AND tipologia = ?"; $params[] = $filtro_tipologia; }
-
-if ($filtro_quartos_valor !== null && $filtro_quartos_valor > 0) {
-    if ($filtro_quartos_operador === 'exato') {
-        $where .= " AND quartos_min = ?";
-    } else {
-        $where .= " AND quartos_min >= ?";
+    // Filtros básicos
+    if ($fase_ativa) {
+        $where .= " AND fase_funil = ?";
+        $params[] = $fase_ativa;
     }
-    $params[] = $filtro_quartos_valor;
-}
 
-if ($filtro_valor_max_min !== null) { $where .= " AND valor_max >= ?"; $params[] = $filtro_valor_max_min; }
-if ($filtro_valor_max_max !== null) { $where .= " AND valor_max <= ?"; $params[] = $filtro_valor_max_max; }
-if ($filtro_vista_mar) { $where .= " AND vista_mar = ?"; $params[] = $filtro_vista_mar; }
-if ($filtro_pe_na_areia !== null) { $where .= " AND pe_na_areia = ?"; $params[] = $filtro_pe_na_areia; }
-if ($filtro_piscina !== null) { $where .= " AND piscina = ?"; $params[] = $filtro_piscina; }
-if ($filtro_garagem !== null) { $where .= " AND garagem_coberta = ?"; $params[] = $filtro_garagem; }
-if ($filtro_mobiliado !== null) { $where .= " AND mobiliado = ?"; $params[] = $filtro_mobiliado; }
-if ($filtro_varanda !== null) { $where .= " AND varanda = ?"; $params[] = $filtro_varanda; }
+    if ($temp_ativa) { $where .= " AND temperatura = ?"; $params[] = $temp_ativa; }
+    if ($busca) { $where .= " AND (nome LIKE ? OR telefone LIKE ?)"; $params[] = "%$busca%"; $params[] = "%$busca%"; }
+
+    // Filtros avançados
+    if ($filtro_tipo_desejo) { $where .= " AND tipo_desejo = ?"; $params[] = $filtro_tipo_desejo; }
+    if ($filtro_tipologia) { $where .= " AND tipologia = ?"; $params[] = $filtro_tipologia; }
+
+    if ($filtro_quartos_valor !== null && $filtro_quartos_valor > 0) {
+        if ($filtro_quartos_operador === 'exato') {
+            $where .= " AND quartos_min = ?";
+        } else {
+            $where .= " AND quartos_min >= ?";
+        }
+        $params[] = $filtro_quartos_valor;
+    }
+
+    if ($filtro_valor_max_min !== null) { $where .= " AND valor_max >= ?"; $params[] = $filtro_valor_max_min; }
+    if ($filtro_valor_max_max !== null) { $where .= " AND valor_max <= ?"; $params[] = $filtro_valor_max_max; }
+    if ($filtro_vista_mar) { $where .= " AND vista_mar = ?"; $params[] = $filtro_vista_mar; }
+    if ($filtro_pe_na_areia !== null) { $where .= " AND pe_na_areia = ?"; $params[] = $filtro_pe_na_areia; }
+    if ($filtro_piscina !== null) { $where .= " AND piscina = ?"; $params[] = $filtro_piscina; }
+    if ($filtro_garagem !== null) { $where .= " AND garagem_coberta = ?"; $params[] = $filtro_garagem; }
+    if ($filtro_mobiliado !== null) { $where .= " AND mobiliado = ?"; $params[] = $filtro_mobiliado; }
+    if ($filtro_varanda !== null) { $where .= " AND varanda = ?"; $params[] = $filtro_varanda; }
+}
 
 function getFaseColor($fase) {
     $cores = ['Novo'=>'bg-info text-dark','Tentativa de Contato'=>'bg-warning text-dark','Contato Feito'=>'bg-primary text-white','Visita Agendada'=>'bg-success text-white','Visita Realizada'=>'bg-dark text-white','Analisando'=>'bg-secondary text-white','Proposta'=>'bg-danger text-white','Fechado'=>'bg-success text-white','Perdido'=>'bg-light text-muted'];
@@ -223,8 +232,12 @@ require_once '../../includes/header.php';
         .filter-temp-link { text-decoration: none; color: #666; padding: 5px 12px; border-radius: 20px; border: 1px solid #ddd; background: #fff; font-size: 0.85rem; transition: 0.2s; white-space: nowrap; }
         .filter-temp-link:hover { background: #eee; }
         .filter-temp-link.active { background: #333; color: #fff; border-color: #333; }
-        .btn-limpar-filtros { text-decoration: none; color: #dc3545; padding: 5px 12px; border-radius: 20px; border: 1px solid #dc3545; background: #fff; font-size: 0.85rem; transition: 0.2s; display: inline-flex; align-items: center; gap: 4px; }
+        .btn-limpar-filtros, .btn-ignorar-filtros { text-decoration: none; padding: 5px 12px; border-radius: 20px; font-size: 0.85rem; transition: 0.2s; display: inline-flex; align-items: center; gap: 4px; }
+        .btn-limpar-filtros { color: #dc3545; border: 1px solid #dc3545; background: #fff; }
         .btn-limpar-filtros:hover { background: #dc3545; color: #fff; }
+        .btn-ignorar-filtros { color: #6c757d; border: 1px solid #6c757d; background: #fff; }
+        .btn-ignorar-filtros:hover { background: #6c757d; color: #fff; }
+        .btn-ignorar-filtros.active { background: #dc3545; border-color: #dc3545; color: #fff; }
         tr.lead-quente, .lead-card.lead-quente { background-color: #f8d7da !important; border-left: 5px solid #dc3545 !important; }
         tr.lead-quente:hover, .lead-card.lead-quente:hover { background-color: #f1b0b7 !important; }
         tr.lead-morno, .lead-card.lead-morno { background-color: #fff3cd !important; border-left: 5px solid #ffc107 !important; }
@@ -276,30 +289,49 @@ require_once '../../includes/header.php';
             background-color: #bb2d3b;
             transform: scale(1.02);
         }
+        .footer-datetime {
+            text-align: center;
+            padding: 20px 0;
+            margin-top: 30px;
+            border-top: 1px solid #dee2e6;
+            color: #6c757d;
+            font-size: 0.85rem;
+        }
         @media (max-width: 991px) { .table-responsive-desktop { display: none !important; } .cards-mobile { display: block !important; } }
         @media (min-width: 992px) { .table-responsive-desktop { display: block !important; } .cards-mobile { display: none !important; } }
-        @media (max-width: 767px) { .filtros-container { flex-direction: column !important; align-items: stretch !important; } .scroll-x { padding-bottom: 6px; } .scroll-x .btn { font-size: 0.75rem; padding: 4px 10px; } .btn-limpar-filtros { margin-top: 8px; text-align: center; justify-content: center; } }
+        @media (max-width: 767px) { .filtros-container { flex-direction: column !important; align-items: stretch !important; } .scroll-x { padding-bottom: 6px; } .scroll-x .btn { font-size: 0.75rem; padding: 4px 10px; } .btn-limpar-filtros, .btn-ignorar-filtros { margin-top: 8px; text-align: center; justify-content: center; } }
         @media (max-width: 575px) { .lead-card-footer .btn-group { width: 100%; } .lead-card-footer .btn-group .btn { flex: 1; } .checkbox-group-mobile .form-check { flex: 1 1 calc(50% - 12px); min-width: auto; } .acoes-lead { justify-content: space-between; } }
     </style>
 </head>
 <body>
 <div class="container">
     <!-- Header -->
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
-    <div>
-        <h2 class="fw-bold text-primary mb-0">Gestão de Leads</h2>
-        <p class="text-muted small mb-0"><?= count($lista) ?> leads na lista atual</p>
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
+        <div>
+            <h2 class="fw-bold text-primary mb-0">Gestão de Leads</h2>
+            <p class="text-muted small mb-0"><?= count($lista) ?> leads na lista atual <?= $ignorar_filtros ? '<span class="badge bg-danger ms-2">INCLUINDO DELETADOS</span>' : '' ?></p>
+        </div>
+        <div class="d-flex flex-column align-items-end gap-2 w-100 w-md-auto">
+            <form action="" method="GET" class="d-flex gap-2 w-100">
+                <input type="text" name="busca" class="form-control" placeholder="Pesquisar..." value="<?= htmlspecialchars($busca) ?>" <?= $ignorar_filtros ? 'disabled' : '' ?>>
+                <button type="submit" class="btn btn-light border" <?= $ignorar_filtros ? 'disabled' : '' ?>><i class="bi bi-search"></i></button>
+            </form>
+            <a href="lead_form.php" class="btn btn-primary shadow-sm w-100 w-md-auto"><i class="bi bi-plus-lg"></i> Novo</a>
+        </div>
     </div>
-    <div class="d-flex flex-column align-items-end gap-2 w-100 w-md-auto">
-        <form action="" method="GET" class="d-flex gap-2 w-100">
-            <input type="text" name="busca" class="form-control" placeholder="Pesquisar..." value="<?= htmlspecialchars($busca) ?>">
-            <button type="submit" class="btn btn-light border"><i class="bi bi-search"></i></button>
-        </form>
-        <a href="lead_form.php" class="btn btn-primary shadow-sm w-100 w-md-auto"><i class="bi bi-plus-lg"></i> Novo</a>
-    </div>
-</div>
 
-    <!-- Filtros de Fase -->
+    <?php if ($ignorar_filtros): ?>
+        <!-- Aviso de que está ignorando todos os filtros -->
+        <div class="alert alert-warning alert-dismissible fade show mb-3" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong>Modo "Sem Filtros" ativo!</strong> Você está visualizando <strong>todos os leads</strong>, incluindo os que foram deletados (soft delete). Nenhum filtro de fase, temperatura, busca ou características está sendo aplicado.
+            <a href="leads3.php" class="btn btn-sm btn-outline-danger ms-3">Voltar ao modo normal</a>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
+
+    <!-- Filtros de Fase (ocultos se ignorar_filtros estiver ativo) -->
+    <?php if (!$ignorar_filtros): ?>
     <div class="scroll-x mb-2">
         <?php foreach ($fases_lista as $f): ?>
             <a href="?fase=<?= urlencode($f) . ($temp_ativa ? "&temperatura=$temp_ativa" : "") . ($busca ? "&busca=$busca" : "") ?>" 
@@ -307,7 +339,7 @@ require_once '../../includes/header.php';
         <?php endforeach; ?>
     </div>
 
-    <!-- Filtros de Temperatura + Limpar -->
+    <!-- Filtros de Temperatura + Limpar + Ignorar Filtros -->
     <div class="d-flex flex-wrap gap-2 mb-3 align-items-center filtros-container">
         <small class="text-muted fw-bold text-uppercase">Temperatura:</small>
         <a href="?fase=<?= urlencode($fase_ativa) . ($busca ? "&busca=$busca" : "") ?>" class="filter-temp-link <?= $temp_ativa == '' ? 'active' : '' ?>">Todos</a>
@@ -318,6 +350,8 @@ require_once '../../includes/header.php';
         <?php if ($fase_ativa || $temp_ativa || $busca): ?>
             <a href="leads3.php" class="btn-limpar-filtros ms-auto"><i class="bi bi-x-circle"></i> Limpar Filtros</a>
         <?php endif; ?>
+        <!-- NOVO BOTÃO: Listar todos sem nenhum filtro (inclui deletados) -->
+        <a href="leads3.php?ignorar_filtros=1" class="btn-ignorar-filtros <?= $ignorar_filtros ? 'active' : '' ?>"><i class="bi bi-eye-slash"></i> 📋 Listar todos (ignorar filtros)</a>
     </div>
 
     <!-- FILTRO RÁPIDO PARA tipo_desejo (Compra / Aluguel) -->
@@ -443,6 +477,7 @@ require_once '../../includes/header.php';
             </div>
         </div>
     </div>
+    <?php endif; // fim do if !ignorar_filtros ?>
 
     <!-- ============================================ -->
     <!-- VERSÃO DESKTOP (TABELA)                      -->
@@ -455,7 +490,6 @@ require_once '../../includes/header.php';
                         <thead class="table-light text-uppercase small fw-bold">
                             <tr>
                                 <th class="ps-3">ID</th>
-                                <!-- NOVO: Campo created_at na listagem (Desktop) -->
                                 <th>Criado em</th>
                                 <th>Fase / Inatividade</th>
                                 <th>Lead / Observações / Histórico / Obs Parceiros</th>
@@ -484,17 +518,14 @@ require_once '../../includes/header.php';
     ?>
     <tr id="row-lead-<?= $l['id'] ?>" class="<?= $is_shared ? 'row-shared' : '' ?> <?= $classe_temperatura ?>">
         <td class="ps-3 small text-muted">#<?= $l['id'] ?> </td>
-        <!-- NOVO: Exibição do created_at -->
         <td class="small text-muted"><?= $created_at_formatted ?></td>
         <td style="width: 150px;">
             <span class="badge <?= getFaseColor($l['fase_funil']) ?> w-100 py-2 mb-1"><?= $l['fase_funil'] ?: 'Novo' ?></span>
-            <!-- Badge colorido de dias parados -->
             <div class="text-center mt-1">
                 <span class="badge <?= $badgeDiasClass ?> px-3 py-2" id="dias-parado-<?= $l['id'] ?>">
                     <?= $dias ?> dias parado
                 </span>
             </div>
-            <!-- Ícone de check para zerar dias parados -->
             <div class="text-center mt-1">
                 <i class="bi bi-check-circle-fill text-success reset-dias-icon reset-dias"
                    data-id="<?= $l['id'] ?>"
@@ -527,7 +558,6 @@ require_once '../../includes/header.php';
                     <div class="text-muted small">Sem interações recentes.</div>
                 <?php endif; ?>
             </div>
-            <!-- Os toggles "Contatar hoje" e "Compartilhar" foram removidos daqui e movidos para a coluna de ações -->
         </td>
           <td class="caracteristicas-cell">
             <?php if (!empty($caracteristicas_resumo)): ?>
@@ -571,7 +601,6 @@ require_once '../../includes/header.php';
             </select>
             </td>
           <td class="text-end pe-3">
-            <!-- Agrupamento dos controles: Contatar Hoje, Compartilhar, Perdido -->
             <div class="acoes-lead d-flex justify-content-end mb-2">
                 <div class="form-check form-switch">
                     <input class="form-check-input toggle-hoje" type="checkbox" data-id="<?= $l['id'] ?>" <?= $contatar_hoje ? 'checked' : '' ?> id="toggleHojeDesktop<?= $l['id'] ?>">
@@ -647,7 +676,6 @@ require_once '../../includes/header.php';
                         <?php endif; ?>
                     </div>
                     <div class="small text-muted">#<?= $l['id'] ?> · Teto: <strong><?= $v_max ?></strong></div>
-                    <!-- NOVO: Exibição do created_at no card mobile -->
                     <div class="small text-muted mt-1"><i class="bi bi-calendar3"></i> Criado em: <?= $created_at_formatted ?></div>
                 </div>
                 <span class="badge <?= getFaseColor($l['fase_funil']) ?> py-2 px-3"><?= $l['fase_funil'] ?: 'Novo' ?></span>
@@ -681,7 +709,6 @@ require_once '../../includes/header.php';
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <!-- Toggles e botão perdido movidos para o footer (serão exibidos lá) -->
                 <?php if (!empty($caracteristicas_resumo)): ?>
                 <div class="mt-2">
                     <div class="lead-card-label mb-1">Preferências</div>
@@ -824,6 +851,11 @@ require_once '../../includes/header.php';
             </form>
         </div>
     </div>
+</div>
+
+<!-- Rodapé com data e hora atual -->
+<div class="footer-datetime">
+    <i class="bi bi-clock"></i> Página gerada em: <?= date('d/m/Y H:i:s') ?>
 </div>
 
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
