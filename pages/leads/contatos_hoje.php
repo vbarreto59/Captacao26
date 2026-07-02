@@ -1,10 +1,12 @@
 <?php
 // contatos_hoje.php - com DataTables, ordenação personalizada, contadores por temperatura e favorito
+// VERSÃO MOBILE OTIMIZADA
+
 session_start();
 require_once '../../includes/auth.php';
 require_once '../../conn_cap.php';
 
-// ==================== PROCESSAMENTO AJAX ====================
+// ==================== PROCESSAMENTO AJAX (mantido) ====================
 if (isset($_POST['action']) && $_POST['action'] == 'update_obs') {
     header('Content-Type: application/json');
     $id   = (int)($_POST['id'] ?? 0);
@@ -68,12 +70,11 @@ if (isset($_POST['action']) && $_POST['action'] == 'limpar_hoje') {
     exit;
 }
 
-// ==================== NOVO: Alternar favorito ====================
+// Alternar favorito
 if (isset($_POST['action']) && $_POST['action'] == 'toggle_favorito') {
     header('Content-Type: application/json');
     $id = (int)($_POST['id'] ?? 0);
     if ($id > 0) {
-        // Obtém o valor atual do favorito
         $stmt = $conn->prepare("SELECT favorito FROM leads WHERE id = ?");
         $stmt->execute([$id]);
         $atual = (int)$stmt->fetchColumn();
@@ -88,13 +89,20 @@ if (isset($_POST['action']) && $_POST['action'] == 'toggle_favorito') {
     exit;
 }
 
-// ====================== CONSULTA ======================
-// Incluído o campo favorito na consulta
-$sql = "SELECT l.*,
-        COALESCE(DATEDIFF(NOW(), l.ultima_interacao), 0) as dias_parado
+// ====================== CONSULTA COM IMÓVEIS ======================
+$sql = "SELECT 
+            l.*,
+            COALESCE(DATEDIFF(NOW(), l.ultima_interacao), 0) as dias_parado,
+            GROUP_CONCAT(DISTINCT i.titulo ORDER BY i.titulo ASC SEPARATOR '||') AS imoveis_titulos,
+            GROUP_CONCAT(DISTINCT i.id ORDER BY i.titulo ASC SEPARATOR ',') AS imoveis_ids
         FROM leads l
-        WHERE l.contatar_hoje = 1";
-$stmt = $conn->query($sql);
+        LEFT JOIN lead_imoveis li ON l.id = li.lead_id
+        LEFT JOIN imoveis i ON li.imovel_id = i.id AND i.deleted_at IS NULL
+        WHERE l.contatar_hoje = 1
+        GROUP BY l.id
+        ORDER BY l.id DESC";
+$stmt = $conn->prepare($sql);
+$stmt->execute();
 $leads = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Contagem por temperatura
@@ -112,7 +120,7 @@ foreach ($leads as $l) {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>Contatos de Hoje - Gestão de Leads</title>
     
     <!-- Bootstrap 5.3 CSS -->
@@ -167,23 +175,58 @@ foreach ($leads as $l) {
             line-height: 1;
         }
         .fav-star:active { transform: scale(0.9); }
-        .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter { margin-bottom: 1rem; }
-        .dataTables_wrapper .dataTables_filter input { border-radius: 20px; padding: 0.375rem 0.75rem; }
-        
-        /* MOBILE RESPONSIVE */
+
+        /* Badge de imóveis */
+        .badge-imovel-interesse {
+            background-color: #e9ecef;
+            color: #0d6efd;
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            margin: 1px 2px;
+            display: inline-block;
+            white-space: nowrap;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .badge-imovel-interesse:hover {
+            background-color: #0d6efd;
+            color: white;
+            transition: 0.2s;
+        }
+        .imoveis-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            margin-top: 4px;
+        }
+
+        /* ===== MOBILE FIRST ===== */
+        /* Em telas pequenas, a tabela se comporta como cartões */
         @media (max-width: 768px) {
+            /* Força a tabela a quebrar em blocos */
             .table-lead-hoje thead { display: none; }
             .table-lead-hoje tbody, .table-lead-hoje tr, .table-lead-hoje td { display: block; width: 100%; }
             .table-lead-hoje tr {
                 background: #ffffff;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-                border-radius: 12px;
-                margin-bottom: 16px;
-                padding: 16px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+                border-radius: 16px;
+                margin-bottom: 20px;
+                padding: 16px 14px;
                 border: 1px solid #e9ecef !important;
                 position: relative;
+                padding-left: 22px; /* espaço para a borda de temperatura */
             }
-            .table-lead-hoje td { padding: 6px 0 !important; text-align: left !important; border: none !important; }
+            .table-lead-hoje td { 
+                padding: 6px 0 !important; 
+                text-align: left !important; 
+                border: none !important;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: baseline;
+            }
             .table-lead-hoje td.index-col { display: none; }
             .table-lead-hoje td.temp-border {
                 position: absolute;
@@ -191,24 +234,31 @@ foreach ($leads as $l) {
                 left: 0;
                 width: 6px !important;
                 height: 100%;
-                border-top-left-radius: 12px;
-                border-bottom-left-radius: 12px;
+                border-top-left-radius: 16px;
+                border-bottom-left-radius: 16px;
                 padding: 0 !important;
+                display: block !important;
             }
+            /* Rótulo para cada campo */
             .table-lead-hoje td::before {
                 content: attr(data-label);
                 display: block;
-                font-size: 0.75rem;
+                font-size: 0.7rem;
                 text-transform: uppercase;
                 font-weight: 700;
-                color: #a0aec0;
-                margin-bottom: 4px;
+                color: #8896a8;
+                letter-spacing: 0.5px;
+                margin-bottom: 2px;
+                width: 100%;
             }
-            /* Esconder o before em colunas que não precisam de rótulo explícito */
-            .table-lead-hoje td:nth-child(3)::before,
-            .table-lead-hoje td:nth-child(9)::before,
-            .table-lead-hoje td:last-child::before { display: none; }
-            .select-temp { margin: 0; width: 130px; }
+            /* Ocultar o label de colunas que não precisam (ex: ações) */
+            .table-lead-hoje td[data-label="Ações"]::before,
+            .table-lead-hoje td[data-label="Favorito"]::before,
+            .table-lead-hoje td[data-label="Manter na fila de hoje?"]::before,
+            .table-lead-hoje td[data-label="Nome"]::before { display: none; }
+
+            /* Ajustes de elementos internos */
+            .select-temp { width: 130px; margin: 0; }
             .obs-text, .obs-parceiros-text {
                 max-width: 100%;
                 white-space: normal;
@@ -217,15 +267,73 @@ foreach ($leads as $l) {
                 padding: 8px 12px !important;
                 border-radius: 8px;
                 border: 1px dashed #dee2e6;
+                width: 100%;
             }
             .obs-parceiros-text { background-color: #fff3e0; border-color: #ffe0b3; }
             .form-switch { padding-left: 2.5em; margin-top: 4px; }
-            .table-lead-hoje td:last-child { padding-top: 12px !important; margin-top: 8px; border-top: 1px solid #f1f3f5 !important; }
-            .btn-group { display: flex; width: 100%; box-shadow: none !important; }
-            .btn-group .btn { flex: 1; padding: 10px 4px; font-size: 0.9rem; justify-content: center; }
+            
+            /* Ações: botões em linha, ocupando toda a largura */
+            .table-lead-hoje td:last-child { 
+                padding-top: 12px !important; 
+                margin-top: 8px; 
+                border-top: 1px solid #f1f3f5 !important;
+                display: block !important;
+            }
+            .btn-group {
+                display: flex !important;
+                width: 100% !important;
+                flex-wrap: wrap;
+                gap: 6px;
+                border: none !important;
+                box-shadow: none !important;
+            }
+            .btn-group .btn {
+                flex: 1 0 auto !important;
+                min-width: 60px;
+                padding: 10px 6px;
+                font-size: 0.85rem;
+                justify-content: center;
+                border-radius: 10px !important;
+                border: 1px solid #dee2e6 !important;
+            }
+            .btn-group .btn:not(:first-child) { border-left: 1px solid #dee2e6 !important; }
+            .btn-group .btn span { display: inline; }
+            
+            .badge-imovel-interesse { font-size: 0.7rem; padding: 3px 10px; }
+            .imoveis-container { margin-top: 6px; width: 100%; }
+            
+            /* DataTables filtro e paginação mobile */
             .dataTables_wrapper .dataTables_filter input { width: 100%; }
             .dataTables_wrapper .dataTables_length select { width: auto; margin-right: 5px; }
+            .dataTables_wrapper .dataTables_paginate .paginate_button { padding: 0.3rem 0.6rem; }
         }
+
+        /* Desktop: larguras fixas para evitar que ações sumam */
+        @media (min-width: 769px) {
+            #tabelaContatosHoje {
+                min-width: 1200px;
+                width: 100% !important;
+            }
+            #tabelaContatosHoje th, #tabelaContatosHoje td {
+                padding: 6px 4px !important;
+                vertical-align: middle;
+            }
+            /* Definindo larguras proporcionais para desktop */
+            #tabelaContatosHoje th:nth-child(1), #tabelaContatosHoje td:nth-child(1) { width: 3%; }
+            #tabelaContatosHoje th:nth-child(2), #tabelaContatosHoje td:nth-child(2) { width: 1%; }
+            #tabelaContatosHoje th:nth-child(3), #tabelaContatosHoje td:nth-child(3) { width: 12%; }
+            #tabelaContatosHoje th:nth-child(4), #tabelaContatosHoje td:nth-child(4) { width: 8%; }
+            #tabelaContatosHoje th:nth-child(5), #tabelaContatosHoje td:nth-child(5) { width: 7%; }
+            #tabelaContatosHoje th:nth-child(6), #tabelaContatosHoje td:nth-child(6) { width: 12%; }
+            #tabelaContatosHoje th:nth-child(7), #tabelaContatosHoje td:nth-child(7) { width: 14%; }
+            #tabelaContatosHoje th:nth-child(8), #tabelaContatosHoje td:nth-child(8) { width: 12%; }
+            #tabelaContatosHoje th:nth-child(9), #tabelaContatosHoje td:nth-child(9) { width: 4%; }
+            #tabelaContatosHoje th:nth-child(10), #tabelaContatosHoje td:nth-child(10) { width: 6%; }
+            #tabelaContatosHoje th:nth-child(11), #tabelaContatosHoje td:nth-child(11) { width: 21%; }
+        }
+
+        .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter { margin-bottom: 1rem; }
+        .dataTables_wrapper .dataTables_filter input { border-radius: 20px; padding: 0.375rem 0.75rem; }
     </style>
 </head>
 <body>
@@ -248,10 +356,9 @@ foreach ($leads as $l) {
                         <i class="bi bi-trash3-fill"></i> Limpar Lista
                     </button>
                 <?php endif; ?>
-    <!-- NOVO BOTÃO: Lista Compacta (abre em nova aba) -->
-    <a href="contatos_hoje_print.php" target="_blank" class="btn btn-outline-light fw-semibold d-flex align-items-center justify-content-center gap-1 shadow-sm py-2">
-        <i class="bi bi-file-text-fill"></i> Lista Compacta
-    </a>                
+                <a href="contatos_hoje_print.php" target="_blank" class="btn btn-outline-light fw-semibold d-flex align-items-center justify-content-center gap-1 shadow-sm py-2">
+                    <i class="bi bi-file-text-fill"></i> Lista Compacta
+                </a>                
                 <a href="leads.php" class="btn btn-light fw-semibold text-primary d-flex align-items-center justify-content-center gap-1 shadow-sm py-2">
                     <i class="bi bi-arrow-left-short fs-5"></i> Voltar à Gestão
                 </a>
@@ -295,8 +402,9 @@ foreach ($leads as $l) {
                                 <th class="text-center">Temperatura</th>
                                 <th>Status de Tempo</th>
                                 <th>Observações</th>
+                                <th>Imóveis Interesse</th>
                                 <th>Obs Parceiros</th>
-                                <th class="text-center">Fav</th>   <!-- NOVA COLUNA FAVORITO -->
+                                <th class="text-center">Fav</th>
                                 <th class="text-center">Hoje?</th>
                                 <th class="text-end pe-4">Ações rápidas</th>
                             </tr>
@@ -313,6 +421,11 @@ foreach ($leads as $l) {
                                 $favorito = (bool)($l['favorito'] ?? 0);
                                 $starIcon = $favorito ? 'bi-star-fill' : 'bi-star';
                                 $starTitle = $favorito ? 'Remover dos favoritos' : 'Adicionar aos favoritos';
+
+                                // Imóveis de interesse
+                                $imoveis_titulos = !empty($l['imoveis_titulos']) ? explode('||', $l['imoveis_titulos']) : [];
+                                $imoveis_ids = !empty($l['imoveis_ids']) ? explode(',', $l['imoveis_ids']) : [];
+                                $total_imoveis = count($imoveis_titulos);
                             ?>
                             <tr id="linha-lead-<?= $l['id'] ?>" class="item-lead-fila border-bottom">
                                 <td class="text-muted ps-3 fw-medium small index-col"><?= $contador++ ?></td>
@@ -345,6 +458,22 @@ foreach ($leads as $l) {
                                         <em class="text-muted opacity-50">Sem observações...</em>
                                     <?php endif; ?>
                                 </td>
+                                <!-- COLUNA IMÓVEIS INTERESSE -->
+                                <td data-label="Imóveis Interesse">
+                                    <?php if ($total_imoveis > 0): ?>
+                                        <div class="imoveis-container">
+                                            <?php foreach ($imoveis_titulos as $i => $titulo): 
+                                                $id_imovel = isset($imoveis_ids[$i]) ? $imoveis_ids[$i] : '';
+                                            ?>
+                                                <span class="badge-imovel-interesse" title="ID: <?= $id_imovel ?>">
+                                                    <i class="bi bi-house-fill me-1"></i><?= htmlspecialchars($titulo) ?>
+                                                </span>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php else: ?>
+                                        <span class="text-muted fst-italic small">Nenhum</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td data-label="Obs Parceiros" 
                                     class="obs-parceiros-text trigger-modal-obs-parceiros" 
                                     id="celula-obs-parceiros-<?= $l['id'] ?>"
@@ -357,7 +486,6 @@ foreach ($leads as $l) {
                                         <em class="text-muted opacity-50">Sem observações...</em>
                                     <?php endif; ?>
                                 </td>
-                                <!-- NOVA COLUNA FAVORITO -->
                                 <td data-label="Favorito" class="text-center">
                                     <i class="fav-star bi <?= $starIcon ?> text-warning fs-3"
                                        data-id="<?= $l['id'] ?>"
@@ -369,7 +497,7 @@ foreach ($leads as $l) {
                                         <input class="form-check-input toggle-hoje-switch" type="checkbox" checked data-id="<?= $l['id'] ?>">
                                     </div>
                                 </td>
-                                <td class="text-end pe-md-4">
+                                <td data-label="Ações" class="text-end pe-md-4">
                                     <div class="btn-group border rounded">
                                         <a href="lead_form.php?id=<?= $l['id'] ?>" class="btn btn-primary btn-sm fw-bold px-3 d-flex align-items-center gap-1">
                                             <i class="bi bi-pencil-square"></i> <span>Editar</span>
@@ -399,7 +527,7 @@ foreach ($leads as $l) {
     <?php endif; ?>
 </div>
 
-<!-- Modais (originais) -->
+<!-- Modais -->
 <div class="modal fade" id="modalObservacoes" tabindex="-1" aria-labelledby="modalObsLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content shadow border-0 rounded-3">
@@ -464,8 +592,8 @@ $(document).ready(function() {
         "language": { "url": "//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json" },
         "order": [[2, 'asc']],
         "columnDefs": [
-            { "orderable": true, "targets": [0,1,2,3,4,5,6,7,8,9] },
-            { "searchable": true, "targets": [2,5,6] },
+            { "orderable": true, "targets": [0,1,2,3,4,5,6,7,8,9,10] },
+            { "searchable": true, "targets": [2,5,6,7] },
             { "type": "num", "targets": 0 },
             {
                 "targets": 3,
@@ -482,6 +610,7 @@ $(document).ready(function() {
         ],
         "pageLength": 100,
         "responsive": false,
+        "scrollX": false,
         "drawCallback": function() {
             recalcularContadores();
             atualizarContadoresTemperatura();
@@ -541,7 +670,6 @@ $(document).ready(function() {
                     star.removeClass('bi-star-fill').addClass('bi-star');
                     star.attr('title', 'Adicionar aos favoritos');
                 }
-                // Feedback visual na linha
                 $(`#linha-lead-${leadId}`).addClass('table-info').delay(500).queue(function(next) {
                     $(this).removeClass('table-info');
                     next();
@@ -708,4 +836,3 @@ $(document).ready(function() {
 
 </body>
 </html>
-<!--  -->

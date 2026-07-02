@@ -1,5 +1,6 @@
 <?php
 // listagem_obs_parceiros.php - Destaque para favoritos (azul), contatar hoje (verde) e dias parados
+// INCLUI IMÓVEIS DE INTERESSE DE CADA LEAD
 session_start();
 require_once '../../includes/auth.php';
 require_once '../../conn_cap.php';
@@ -33,7 +34,7 @@ try {
 } catch (PDOException $e) { /* colunas já existem */ }
 
 // ==========================================
-// LÓGICA AJAX (ações inline)
+// LÓGICA AJAX (ações inline) - MANTIDA IGUAL
 // ==========================================
 if (isset($_POST['action'])) {
     header('Content-Type: application/json');
@@ -259,38 +260,64 @@ $show_deleted = isset($_GET['show_deleted']) && $_GET['show_deleted'] == '1';
 $filtro_valor_max = isset($_GET['valor_max_filtro']) && is_numeric($_GET['valor_max_filtro']) ? (float)$_GET['valor_max_filtro'] : null;
 $filtro_favorito = isset($_GET['favorito']) && $_GET['favorito'] == '1';
 
-$where = "WHERE 1=1 AND fase_funil <> 'Perdido' ";
+// ==========================================
+// CONSTRUÇÃO DA WHERE COM ALIAS l.
+// ==========================================
+$where = "WHERE 1=1 AND l.fase_funil <> 'Perdido' ";
 $params = [];
 
 if (!$show_deleted) {
-    $where .= " AND deleted_at IS NULL";
+    $where .= " AND l.deleted_at IS NULL";
 }
 if (!empty($busca)) {
-    $where .= " AND (nome LIKE ? OR primeiro_nome LIKE ? OR obs_parceiros LIKE ? OR observacoes LIKE ?)";
+    $where .= " AND (l.nome LIKE ? OR l.primeiro_nome LIKE ? OR l.obs_parceiros LIKE ? OR l.observacoes LIKE ?)";
     $params[] = "%$busca%";
     $params[] = "%$busca%";
     $params[] = "%$busca%";
     $params[] = "%$busca%";
 }
 if ($filtro_valor_max !== null && $filtro_valor_max > 0) {
-    $where .= " AND valor_max >= ?";
+    $where .= " AND l.valor_max >= ?";
     $params[] = $filtro_valor_max;
 }
 if ($filtro_favorito) {
-    $where .= " AND favorito = 1";
+    $where .= " AND l.favorito = 1";
 }
 
-$sql = "SELECT id, nome, primeiro_nome, tipo_pagamento, quartos_min, valor_max, obs_parceiros, observacoes, 
-               compartilhado_parceiro, favorito, contatar_hoje, deleted_at,
-               fase_funil,
-               COALESCE(DATEDIFF(NOW(), ultima_interacao), 0) as dias_parado,
-               created_at
-        FROM leads $where ORDER BY id DESC";
+// ==========================================
+// CONSULTA PRINCIPAL COM IMÓVEIS DE INTERESSE (CORRIGIDA)
+// ==========================================
+$sql = "SELECT 
+            l.id, 
+            l.nome, 
+            l.primeiro_nome, 
+            l.tipo_pagamento, 
+            l.quartos_min, 
+            l.valor_max, 
+            l.obs_parceiros, 
+            l.observacoes, 
+            l.compartilhado_parceiro, 
+            l.favorito, 
+            l.contatar_hoje, 
+            l.deleted_at,
+            l.fase_funil,
+            COALESCE(DATEDIFF(NOW(), l.ultima_interacao), 0) as dias_parado,
+            l.created_at,
+            GROUP_CONCAT(DISTINCT i.titulo ORDER BY i.titulo ASC SEPARATOR '||') AS imoveis_titulos,
+            GROUP_CONCAT(DISTINCT i.id ORDER BY i.titulo ASC SEPARATOR ',') AS imoveis_ids
+        FROM leads l
+        LEFT JOIN lead_imoveis li ON l.id = li.lead_id
+        LEFT JOIN imoveis i ON li.imovel_id = i.id AND i.deleted_at IS NULL
+        $where
+        GROUP BY l.id
+        ORDER BY l.id DESC";
+
 $stmt = $conn->prepare($sql);
 $stmt->execute($params);
 $leads = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$sqlDistinct = "SELECT DISTINCT valor_max FROM leads WHERE deleted_at IS NULL AND valor_max > 0 ORDER BY valor_max ASC";
+// Valores para o filtro de valor máximo (com alias l. para evitar ambiguidade)
+$sqlDistinct = "SELECT DISTINCT l.valor_max FROM leads l WHERE l.deleted_at IS NULL AND l.valor_max > 0 ORDER BY l.valor_max ASC";
 $stmtDist = $conn->query($sqlDistinct);
 $valores_distinct = $stmtDist->fetchAll(PDO::FETCH_COLUMN);
 
@@ -333,10 +360,37 @@ function getDiasBadgeClass($dias) {
         .btn-favorito-filtro { background: #fff; border: 1px solid #ddd; border-radius: 20px; padding: 5px 14px; color: #6c757d; transition: 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; }
         .btn-favorito-filtro:hover { background: #f0f0f0; }
         .btn-favorito-filtro.active { background: #ffc107; border-color: #ffc107; color: #212529; font-weight: 600; }
-        /* Cores personalizadas para as novas fases */
         .bg-teal { background-color: #20c997 !important; color: white !important; }
         .bg-purple { background-color: #6f42c1 !important; color: white !important; }
-        /* ... demais estilos existentes ... */
+        
+        /* Badge de imóveis */
+        .badge-imovel-interesse {
+            background-color: #e9ecef;
+            color: #0d6efd;
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            margin: 1px 2px;
+            display: inline-block;
+            white-space: nowrap;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .badge-imovel-interesse:hover {
+            background-color: #0d6efd;
+            color: white;
+            transition: 0.2s;
+        }
+        .imoveis-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            margin-top: 4px;
+        }
+
+        /* ====== TABELA DESKTOP ====== */
         #tabelaLeads {
             table-layout: fixed;
             width: 100%;
@@ -348,19 +402,22 @@ function getDiasBadgeClass($dias) {
             word-wrap: break-word;
             overflow-wrap: break-word;
         }
-        #tabelaLeads th:nth-child(1), #tabelaLeads td:nth-child(1) { width: 4%; }
-        #tabelaLeads th:nth-child(2), #tabelaLeads td:nth-child(2) { width: 7%; }
-        #tabelaLeads th:nth-child(3), #tabelaLeads td:nth-child(3) { width: 9%; }
-        #tabelaLeads th:nth-child(4), #tabelaLeads td:nth-child(4) { width: 8%; }
-        #tabelaLeads th:nth-child(5), #tabelaLeads td:nth-child(5) { width: 7%; }
+        /* Larguras das colunas */
+        #tabelaLeads th:nth-child(1), #tabelaLeads td:nth-child(1) { width: 3%; }
+        #tabelaLeads th:nth-child(2), #tabelaLeads td:nth-child(2) { width: 6%; }
+        #tabelaLeads th:nth-child(3), #tabelaLeads td:nth-child(3) { width: 7%; }
+        #tabelaLeads th:nth-child(4), #tabelaLeads td:nth-child(4) { width: 7%; }
+        #tabelaLeads th:nth-child(5), #tabelaLeads td:nth-child(5) { width: 5%; }
         #tabelaLeads th:nth-child(6), #tabelaLeads td:nth-child(6) { width: 4%; }
         #tabelaLeads th:nth-child(7), #tabelaLeads td:nth-child(7) { width: 12%; }
-        #tabelaLeads th:nth-child(8), #tabelaLeads td:nth-child(8) { width: 8%; }
+        #tabelaLeads th:nth-child(8), #tabelaLeads td:nth-child(8) { width: 7%; }
         #tabelaLeads th:nth-child(9), #tabelaLeads td:nth-child(9) { width: 11%; }
-        #tabelaLeads th:nth-child(10), #tabelaLeads td:nth-child(10) { width: 11%; }
-        #tabelaLeads th:nth-child(11), #tabelaLeads td:nth-child(11) { width: 7%; }
-        #tabelaLeads th:nth-child(12), #tabelaLeads td:nth-child(12) { width: 7%; }
-        #tabelaLeads th:nth-child(13), #tabelaLeads td:nth-child(13) { width: 10%; }
+        #tabelaLeads th:nth-child(10), #tabelaLeads td:nth-child(10) { width: 10%; }
+        #tabelaLeads th:nth-child(11), #tabelaLeads td:nth-child(11) { width: 10%; }
+        #tabelaLeads th:nth-child(12), #tabelaLeads td:nth-child(12) { width: 6%; }
+        #tabelaLeads th:nth-child(13), #tabelaLeads td:nth-child(13) { width: 6%; }
+        #tabelaLeads th:nth-child(14), #tabelaLeads td:nth-child(14) { width: 10%; }
+
         .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         #tabelaLeads td .badge { font-size: 0.7rem; padding: 4px 6px; }
         #tabelaLeads td .form-check { margin: 0; padding-left: 1.5em; }
@@ -370,26 +427,103 @@ function getDiasBadgeClass($dias) {
         #tabelaLeads td .btn-duplicate { font-size: 0.6rem; padding: 2px 6px; }
         .obs-cell, .observacoes-cell { font-size: 0.75rem; line-height: 1.3; }
         .tipo-pagamento-cell { display: inline-block; padding: 0 4px; border-radius: 4px; }
-        @media (max-width: 768px) {
-            #tabelaLeads { table-layout: auto; min-width: unset; }
-            #tabelaLeads thead { display: none; }
-            #tabelaLeads tbody, #tabelaLeads tr, #tabelaLeads td { display: block; width: 100%; }
-            #tabelaLeads tr { background: #fff; border-radius: 12px; margin-bottom: 16px; padding: 12px; border: 1px solid #e9ecef; position: relative; }
-            #tabelaLeads td { padding: 6px 0 !important; text-align: left !important; border: none !important; }
-            #tabelaLeads td::before { content: attr(data-label); display: inline-block; font-weight: bold; width: 40%; font-size: 0.75rem; color: #6c757d; text-transform: uppercase; }
-            #tabelaLeads td[data-label="Ações"]::before,
-            #tabelaLeads td[data-label="Favorito"]::before,
-            #tabelaLeads td[data-label="Compartilhar"]::before,
-            #tabelaLeads td[data-label="Contatar Hoje"]::before { width: auto; margin-right: 8px; }
-            .btn-group { display: inline-flex; gap: 4px; }
-            .form-check { display: inline-block; }
-            .favorito-star { font-size: 1.1rem; }
-            .dataTables_filter input { width: 100%; }
-            #tabelaLeads td .btn-sm { font-size: 0.7rem; padding: 4px 8px; }
-        }
+
+        /* ====== FILTROS ====== */
         .filter-bar { background: white; border-radius: 20px; padding: 12px 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .filter-select { min-width: 180px; }
-        @media (max-width: 768px) { .filter-select { width: 100%; margin-top: 8px; } }
+
+        /* ====== CARDS MOBILE ====== */
+        .lead-card {
+            background: #fff;
+            border-radius: 16px;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            transition: background 0.2s;
+        }
+        .lead-card.row-favorito {
+            background-color: #e3f2fd !important;
+        }
+        .lead-card.row-contatar-hoje {
+            background-color: #d4edda !important;
+        }
+        .lead-card.row-shared {
+            border-left-color: #0d6efd !important;
+        }
+        .lead-card.row-deleted {
+            opacity: 0.6;
+            text-decoration: line-through;
+            background-color: #f8d7da !important;
+        }
+        .lead-card .badge-imovel-interesse {
+            background-color: #e9ecef;
+            color: #0d6efd;
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            white-space: nowrap;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .lead-card .valor-max-cell,
+        .lead-card .nome-completo-cell,
+        .lead-card .nome-cell,
+        .lead-card .tipo-pagamento-cell,
+        .lead-card .fase-cell,
+        .lead-card .obs-cell,
+        .lead-card .observacoes-cell {
+            cursor: pointer;
+        }
+        .lead-card .reset-dias-icon {
+            font-size: 1.4rem;
+            color: #28a745;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .lead-card .reset-dias-icon:hover {
+            transform: scale(1.15);
+        }
+        .lead-card .favorito-star {
+            font-size: 1.6rem;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .lead-card .favorito-star:hover {
+            transform: scale(1.2);
+        }
+        .lead-card .btn-perdido {
+            font-size: 0.7rem;
+            padding: 4px 10px;
+        }
+        .lead-card .btn-duplicate {
+            font-size: 0.7rem;
+            padding: 4px 10px;
+        }
+        .lead-card .btn-soft-delete {
+            font-size: 0.7rem;
+            padding: 4px 10px;
+        }
+        .lead-card .btn-restore {
+            font-size: 0.7rem;
+            padding: 4px 10px;
+        }
+        .lead-card .form-check-label {
+            font-size: 0.8rem;
+        }
+        .lead-card .form-check-input {
+            width: 1.2rem;
+            height: 1.2rem;
+        }
+
+        @media (max-width: 768px) {
+            .filter-bar .d-flex.gap-2 {
+                flex-wrap: wrap;
+            }
+            .filter-select {
+                min-width: 120px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -452,8 +586,10 @@ function getDiasBadgeClass($dias) {
         </form>
     </div>
 
-    <!-- Tabela -->
-    <div class="card card-custom shadow-sm">
+    <!-- ======================================== -->
+    <!-- TABELA (DESKTOP) -->
+    <!-- ======================================== -->
+    <div class="card card-custom shadow-sm d-none d-md-block">
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table id="tabelaLeads" class="table table-hover align-middle mb-0">
@@ -465,12 +601,11 @@ function getDiasBadgeClass($dias) {
                             <th>Valor / Pagamento</th>
                             <th>Fase</th>
                             <th><i class="bi bi-star-fill"></i></th>
-                            <th>Nome Completo</th>
+                            <th>Nome Completo / Imóveis</th>
                             <th>Primeiro Nome</th>
                             <th>Obs Gerais</th>
                             <th>Obs Parceiros</th>
                             <th class="text-center">Compartilhar</th>
-                            <th class="text-center">Contatar Hoje</th>
                             <th class="text-center">Ações</th>
                         </tr>
                     </thead>
@@ -502,10 +637,17 @@ function getDiasBadgeClass($dias) {
                             
                             $fase = $lead['fase_funil'] ?? 'Novo';
                             $fase_badge_class = getFaseColor($fase);
+
+                            $imoveis_titulos = !empty($lead['imoveis_titulos']) ? explode('||', $lead['imoveis_titulos']) : [];
+                            $imoveis_ids = !empty($lead['imoveis_ids']) ? explode(',', $lead['imoveis_ids']) : [];
+                            $total_imoveis = count($imoveis_titulos);
                         ?>
                         <tr id="row-lead-<?= $lead['id'] ?>" class="<?= $row_class ?>">
-                            <td data-label="#"><?= $index + 1 ?></td>
-                            <td data-label="Dias Parado">
+                            <!-- Coluna 1: # -->
+                            <td data-label="#" class="col-1"><?= $index + 1 ?></td>
+                            
+                            <!-- Coluna 2: Dias Parado -->
+                            <td data-label="Dias Parado" class="col-2">
                                 <span class="badge <?= $badge_dias_class ?> px-3 py-2" id="dias-parado-<?= $lead['id'] ?>">
                                     <?= $dias_parado ?> dias
                                 </span>
@@ -513,8 +655,12 @@ function getDiasBadgeClass($dias) {
                                     <i class="bi bi-check-circle-fill reset-dias-icon" data-id="<?= $lead['id'] ?>" title="Registrar ação (zerar dias parados)"></i>
                                 <?php endif; ?>
                             </td>
-                            <td data-label="Criado em" class="text-muted small"><?= $created_at_formatado ?></td>
-                            <td data-label="Valor / Pagamento" class="fw-semibold">
+                            
+                            <!-- Coluna 3: Criado em -->
+                            <td data-label="Criado em" class="col-3 text-muted small"><?= $created_at_formatado ?></td>
+                            
+                            <!-- Coluna 4: Valor / Pagamento -->
+                            <td data-label="Valor / Pagamento" class="col-4 fw-semibold">
                                 <div class="valor-max-cell" data-id="<?= $lead['id'] ?>" data-valor="<?= $valor_max_raw ?>" style="cursor: pointer;">
                                     <?= $valor_max_formatado ?>
                                 </div>
@@ -533,19 +679,44 @@ function getDiasBadgeClass($dias) {
                                     <?php endif; ?>
                                 </span>
                             </td>
-                            <td data-label="Fase" class="fase-cell" data-id="<?= $lead['id'] ?>" data-fase="<?= htmlspecialchars($fase) ?>" style="cursor: pointer;">
+                            
+                            <!-- Coluna 5: Fase -->
+                            <td data-label="Fase" class="col-5 fase-cell" data-id="<?= $lead['id'] ?>" data-fase="<?= htmlspecialchars($fase) ?>" style="cursor: pointer;">
                                 <span class="badge <?= $fase_badge_class ?> px-3 py-2 w-100 text-center"><?= htmlspecialchars($fase) ?></span>
                             </td>
-                            <td data-label="Favorito" class="text-center">
+                            
+                            <!-- Coluna 6: Favorito -->
+                            <td data-label="Favorito" class="col-6 text-center">
                                 <i class="bi <?= $is_favorito ? 'bi-star-fill text-warning' : 'bi-star text-muted' ?> favorito-star" data-id="<?= $lead['id'] ?>"></i>
                             </td>
-                            <td data-label="Nome Completo" class="fw-semibold nome-completo-cell" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
-                                <i class="bi bi-person-circle text-primary me-1"></i><?= htmlspecialchars($lead['nome']) ?>
+                            
+                            <!-- Coluna 7: Nome Completo -->
+                            <td data-label="Nome Completo" class="col-7 fw-semibold">
+                                <div class="nome-completo-cell" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>" style="cursor: pointer;">
+                                    <i class="bi bi-person-circle text-primary me-1"></i><?= htmlspecialchars($lead['nome']) ?>
+                                </div>
                             </td>
-                            <td data-label="Primeiro Nome" class="nome-cell" data-id="<?= $lead['id'] ?>" data-nome-completo="<?= htmlspecialchars($lead['nome']) ?>" data-primeiro-nome="<?= htmlspecialchars($lead['primeiro_nome'] ?? '') ?>">
+                            
+                            <!-- Coluna 8: Primeiro Nome + Imóveis -->
+                            <td data-label="Primeiro Nome / Imóveis" class="col-8 nome-cell" data-id="<?= $lead['id'] ?>" data-nome-completo="<?= htmlspecialchars($lead['nome']) ?>" data-primeiro-nome="<?= htmlspecialchars($lead['primeiro_nome'] ?? '') ?>">
                                 <i class="bi bi-person-bounding-box text-info me-1"></i><?= htmlspecialchars($lead['primeiro_nome'] ?: '—') ?>
+                                <?php if ($total_imoveis > 0): ?>
+                                    <div class="imoveis-container">
+                                        <?php foreach ($imoveis_titulos as $i => $titulo): 
+                                            $id_imovel = isset($imoveis_ids[$i]) ? $imoveis_ids[$i] : '';
+                                        ?>
+                                            <span class="badge-imovel-interesse" title="ID: <?= $id_imovel ?>">
+                                                <i class="bi bi-house-fill me-1"></i><?= htmlspecialchars($titulo) ?>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="text-muted fst-italic small">Nenhum</span>
+                                <?php endif; ?>
                             </td>
-                            <td data-label="Obs Gerais" class="observacoes-cell" data-id="<?= $lead['id'] ?>" data-obs="<?= htmlspecialchars($observacoes) ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
+                            
+                            <!-- Coluna 9: Obs Gerais -->
+                            <td data-label="Obs Gerais" class="col-9 observacoes-cell" data-id="<?= $lead['id'] ?>" data-obs="<?= htmlspecialchars($observacoes) ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
                                 <small class="d-block text-muted fw-bold mb-1 text-uppercase" style="font-size: 0.65rem;">Obs Gerais</small>
                                 <?php if (!empty($observacoes)): ?>
                                     <i class="bi bi-chat-text text-secondary me-1"></i><?= nl2br(htmlspecialchars($observacoes)) ?>
@@ -553,7 +724,9 @@ function getDiasBadgeClass($dias) {
                                     <span class="text-muted fst-italic"><i class="bi bi-pencil-square"></i> Adicionar...</span>
                                 <?php endif; ?>
                             </td>
-                            <td data-label="Obs Parceiros" class="obs-cell" data-id="<?= $lead['id'] ?>" data-obs="<?= htmlspecialchars($lead['obs_parceiros'] ?? '') ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
+                            
+                            <!-- Coluna 10: Obs Parceiros -->
+                            <td data-label="Obs Parceiros" class="col-10 obs-cell" data-id="<?= $lead['id'] ?>" data-obs="<?= htmlspecialchars($lead['obs_parceiros'] ?? '') ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
                                 <small class="d-block text-muted fw-bold mb-1 text-uppercase" style="font-size: 0.65rem;">Obs Parceiros</small>
                                 <?php if (!empty($lead['obs_parceiros'])): ?>
                                     <i class="bi bi-shield-shaded text-warning me-1"></i><?= nl2br(htmlspecialchars($lead['obs_parceiros'])) ?>
@@ -561,29 +734,35 @@ function getDiasBadgeClass($dias) {
                                     <span class="text-muted fst-italic"><i class="bi bi-pencil-square"></i> Adicionar...</span>
                                 <?php endif; ?>
                             </td>
-                            <td data-label="Compartilhar" class="text-center">
-                                <div class="form-check form-switch d-inline-block align-middle">
+                            
+                            <!-- Coluna 11: Compartilhar -->
+                            <td data-label="Compartilhar" class="col-11 text-start">
+                                <div class="form-check form-switch d-inline-block align-middle me-3">
                                     <input class="form-check-input toggle-share" type="checkbox" id="share-<?= $lead['id'] ?>" data-id="<?= $lead['id'] ?>" <?= $is_shared ? 'checked' : '' ?> <?= $is_deleted ? 'disabled' : '' ?>>
                                     <label class="form-check-label small text-muted ms-1" for="share-<?= $lead['id'] ?>">Comp.</label>
                                 </div>
-                            </td>
-                            <td data-label="Contatar Hoje" class="text-center">
                                 <div class="form-check form-switch d-inline-block align-middle">
                                     <input class="form-check-input toggle-contatar-hoje" type="checkbox" id="switch-<?= $lead['id'] ?>" data-id="<?= $lead['id'] ?>" <?= $is_contatar_hoje ? 'checked' : '' ?> <?= $is_deleted ? 'disabled' : '' ?>>
                                     <label class="form-check-label small text-muted ms-1" for="switch-<?= $lead['id'] ?>">Hoje</label>
                                 </div>
                             </td>
-                            <td data-label="Ações" class="text-center">
+                            
+                            <!-- Coluna 12: Ações -->
+                            <td data-label="Ações" class="col-12 text-center">
                                 <?php if ($is_deleted): ?>
                                     <button class="btn btn-sm btn-outline-success btn-restore" data-id="<?= $lead['id'] ?>"><i class="bi bi-arrow-counterclockwise"></i></button>
                                 <?php else: ?>
-                                    <button class="btn btn-sm btn-outline-info btn-duplicate ms-1" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>" title="Duplicar lead">
-                                        <i class="bi bi-files"></i> Dupe
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger btn-soft-delete" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>"><i class="bi bi-trash"></i></button>
-                                    <button class="btn btn-sm btn-perdido ms-1" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
-                                        <i class="bi bi-x-octagon"></i> Perdido
-                                    </button>
+                                    <div class="d-flex flex-wrap justify-content-center gap-1">
+                                        <button class="btn btn-sm btn-outline-info btn-duplicate" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>" title="Duplicar lead">
+                                            <i class="bi bi-files"></i> Dupe
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger btn-soft-delete" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-perdido" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>">
+                                            <i class="bi bi-x-octagon"></i> Perdido
+                                        </button>
+                                    </div>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -593,6 +772,154 @@ function getDiasBadgeClass($dias) {
             </div>
         </div>
     </div>
+
+    <!-- ======================================== -->
+    <!-- CARDS (MOBILE) -->
+    <!-- ======================================== -->
+    <div class="d-block d-md-none">
+        <?php foreach ($leads as $index => $lead): 
+            $is_shared = (int)($lead['compartilhado_parceiro'] ?? 0);
+            $is_favorito = (int)($lead['favorito'] ?? 0);
+            $is_contatar_hoje = (int)($lead['contatar_hoje'] ?? 0);
+            $is_deleted = !is_null($lead['deleted_at']);
+            $dias_parado = (int)($lead['dias_parado'] ?? 0);
+            $badge_dias_class = getDiasBadgeClass($dias_parado);
+            $created_at_formatado = !empty($lead['created_at']) ? date('d/m/Y H:i', strtotime($lead['created_at'])) : '—';
+            $valor_max_raw = $lead['valor_max'] ?? 0;
+            $valor_max_formatado = $valor_max_raw > 0 ? 'R$ ' . number_format($valor_max_raw, 0, ',', '.') : '—';
+            $observacoes = $lead['observacoes'] ?? '';
+            $tipo_pagamento = $lead['tipo_pagamento'] ?? '';
+            $quartos_min = $lead['quartos_min'] ?? '';
+            $fase = $lead['fase_funil'] ?? 'Novo';
+            $fase_badge_class = getFaseColor($fase);
+            $imoveis_titulos = !empty($lead['imoveis_titulos']) ? explode('||', $lead['imoveis_titulos']) : [];
+            $imoveis_ids = !empty($lead['imoveis_ids']) ? explode(',', $lead['imoveis_ids']) : [];
+            $total_imoveis = count($imoveis_titulos);
+
+            $card_class = 'lead-card mb-3 p-3 bg-white rounded-3 shadow-sm border';
+            if ($is_deleted) {
+                $card_class .= ' row-deleted';
+            } else {
+                if ($is_favorito) $card_class .= ' row-favorito';
+                if ($is_contatar_hoje) $card_class .= ' row-contatar-hoje';
+                if ($is_shared) $card_class .= ' row-shared';
+            }
+        ?>
+        <div id="row-lead-<?= $lead['id'] ?>" class="<?= $card_class ?>" style="border-left: 4px solid <?= $is_favorito ? '#0d6efd' : ($is_contatar_hoje ? '#28a745' : '#dee2e6') ?>;">
+            <!-- Cabeçalho do card -->
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="fw-bold nome-completo-cell" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>" style="cursor:pointer; font-size:1.1rem;">
+                        <i class="bi bi-person-circle text-primary me-1"></i><?= htmlspecialchars($lead['nome']) ?>
+                    </span>
+                    <span class="fase-cell badge <?= $fase_badge_class ?> px-3 py-2" data-id="<?= $lead['id'] ?>" data-fase="<?= htmlspecialchars($fase) ?>" style="cursor:pointer; font-size:0.75rem;">
+                        <?= htmlspecialchars($fase) ?>
+                    </span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi <?= $is_favorito ? 'bi-star-fill text-warning' : 'bi-star text-muted' ?> favorito-star" data-id="<?= $lead['id'] ?>" style="font-size:1.6rem; cursor:pointer;"></i>
+                    <span class="badge <?= $badge_dias_class ?> px-3 py-2" id="dias-parado-<?= $lead['id'] ?>">
+                        <?= $dias_parado ?>d
+                    </span>
+                    <?php if (!$is_deleted): ?>
+                        <i class="bi bi-check-circle-fill reset-dias-icon" data-id="<?= $lead['id'] ?>" title="Zerar dias" style="font-size:1.4rem; color:#28a745; cursor:pointer;"></i>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Corpo do card -->
+            <div class="row g-2 small">
+                <div class="col-6">
+                    <span class="text-muted">Criado:</span> <?= $created_at_formatado ?>
+                </div>
+                <div class="col-6">
+                    <span class="text-muted">Valor:</span>
+                    <span class="valor-max-cell" data-id="<?= $lead['id'] ?>" data-valor="<?= $valor_max_raw ?>" style="cursor:pointer; font-weight:600;">
+                        <?= $valor_max_formatado ?>
+                    </span>
+                </div>
+                <div class="col-6">
+                    <span class="text-muted">Pagamento:</span>
+                    <span class="tipo-pagamento-cell" data-id="<?= $lead['id'] ?>" data-tipo="<?= htmlspecialchars($tipo_pagamento) ?>" style="cursor:pointer;">
+                        <?php if (!empty($tipo_pagamento)): ?>
+                            <i class="bi bi-credit-card"></i> <?= htmlspecialchars($tipo_pagamento) ?>
+                        <?php else: ?>
+                            <i class="bi bi-plus-circle text-muted"></i> Adicionar
+                        <?php endif; ?>
+                    </span>
+                    <?php if (!empty($quartos_min)): ?>
+                        <span class="ms-2"><i class="bi bi-door-open"></i> <?= htmlspecialchars($quartos_min) ?> qtos</span>
+                    <?php endif; ?>
+                </div>
+                <div class="col-6">
+                    <span class="text-muted">Primeiro nome:</span>
+                    <span class="nome-cell" data-id="<?= $lead['id'] ?>" data-nome-completo="<?= htmlspecialchars($lead['nome']) ?>" data-primeiro-nome="<?= htmlspecialchars($lead['primeiro_nome'] ?? '') ?>" style="cursor:pointer;">
+                        <i class="bi bi-person-bounding-box text-info me-1"></i><?= htmlspecialchars($lead['primeiro_nome'] ?: '—') ?>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Obs Gerais -->
+            <div class="mt-2 observacoes-cell" data-id="<?= $lead['id'] ?>" data-obs="<?= htmlspecialchars($observacoes) ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>" style="cursor:pointer; background:#f8f9fa; padding:6px 10px; border-radius:8px;">
+                <span class="text-muted fw-bold text-uppercase" style="font-size:0.65rem;">Obs Gerais</span>
+                <?php if (!empty($observacoes)): ?>
+                    <div><i class="bi bi-chat-text text-secondary me-1"></i><?= nl2br(htmlspecialchars($observacoes)) ?></div>
+                <?php else: ?>
+                    <span class="text-muted fst-italic"><i class="bi bi-pencil-square"></i> Adicionar...</span>
+                <?php endif; ?>
+            </div>
+
+            <!-- Obs Parceiros -->
+            <div class="mt-1 obs-cell" data-id="<?= $lead['id'] ?>" data-obs="<?= htmlspecialchars($lead['obs_parceiros'] ?? '') ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>" style="cursor:pointer; background:#fff9e6; padding:6px 10px; border-radius:8px;">
+                <span class="text-muted fw-bold text-uppercase" style="font-size:0.65rem;">Obs Parceiros</span>
+                <?php if (!empty($lead['obs_parceiros'])): ?>
+                    <div><i class="bi bi-shield-shaded text-warning me-1"></i><?= nl2br(htmlspecialchars($lead['obs_parceiros'])) ?></div>
+                <?php else: ?>
+                    <span class="text-muted fst-italic"><i class="bi bi-pencil-square"></i> Adicionar...</span>
+                <?php endif; ?>
+            </div>
+
+            <!-- Imóveis de interesse -->
+            <?php if ($total_imoveis > 0): ?>
+                <div class="mt-2">
+                    <span class="text-muted fw-bold text-uppercase" style="font-size:0.65rem;">Imóveis de interesse</span>
+                    <div class="imoveis-container d-flex flex-wrap gap-1 mt-1">
+                        <?php foreach ($imoveis_titulos as $i => $titulo): 
+                            $id_imovel = isset($imoveis_ids[$i]) ? $imoveis_ids[$i] : '';
+                        ?>
+                            <span class="badge-imovel-interesse" title="ID: <?= $id_imovel ?>">
+                                <i class="bi bi-house-fill me-1"></i><?= htmlspecialchars($titulo) ?>
+                            </span>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <!-- Ações e toggles -->
+            <div class="mt-3 d-flex flex-wrap align-items-center gap-3">
+                <!-- Compartilhar -->
+                <div class="form-check form-switch">
+                    <input class="form-check-input toggle-share" type="checkbox" id="share-<?= $lead['id'] ?>" data-id="<?= $lead['id'] ?>" <?= $is_shared ? 'checked' : '' ?> <?= $is_deleted ? 'disabled' : '' ?>>
+                    <label class="form-check-label small text-muted" for="share-<?= $lead['id'] ?>">Compartilhar</label>
+                </div>
+                <!-- Contatar Hoje -->
+                <div class="form-check form-switch">
+                    <input class="form-check-input toggle-contatar-hoje" type="checkbox" id="switch-<?= $lead['id'] ?>" data-id="<?= $lead['id'] ?>" <?= $is_contatar_hoje ? 'checked' : '' ?> <?= $is_deleted ? 'disabled' : '' ?>>
+                    <label class="form-check-label small text-muted" for="switch-<?= $lead['id'] ?>">Contatar hoje</label>
+                </div>
+                <!-- Botões de ação -->
+                <?php if ($is_deleted): ?>
+                    <button class="btn btn-sm btn-outline-success btn-restore" data-id="<?= $lead['id'] ?>"><i class="bi bi-arrow-counterclockwise"></i> Restaurar</button>
+                <?php else: ?>
+                    <button class="btn btn-sm btn-outline-info btn-duplicate" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>" title="Duplicar"><i class="bi bi-files"></i> Dupe</button>
+                    <button class="btn btn-sm btn-outline-danger btn-soft-delete" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>"><i class="bi bi-trash"></i></button>
+                    <button class="btn btn-sm btn-perdido" data-id="<?= $lead['id'] ?>" data-nome="<?= htmlspecialchars($lead['nome']) ?>"><i class="bi bi-x-octagon"></i> Perdido</button>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+
     <div class="text-muted small mt-3 text-center">
         <i class="bi bi-info-circle"></i> Clique nos campos destacados para editar. 
         <i class="bi bi-star-fill text-warning"></i> Favorito = fundo azul claro. 
@@ -602,6 +929,7 @@ function getDiasBadgeClass($dias) {
         <i class="bi bi-files text-info"></i> "Dupe" duplica o lead.
         <i class="bi bi-credit-card"></i> Clique no tipo de pagamento para escolher "Financiamento" ou "À Vista".
         <i class="bi bi-arrow-repeat"></i> Clique na fase para alterar (inclui "Contato Feito" e "Procurar Imóvel").
+        <i class="bi bi-house-heart"></i> Os imóveis de interesse aparecem abaixo do nome.
     </div>
 </div>
 
@@ -648,7 +976,7 @@ function getDiasBadgeClass($dias) {
     </div>
 </div>
 
-<!-- Modal Fase (com todas as fases atualizadas) -->
+<!-- Modal Fase -->
 <div class="modal fade" id="modalFase" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -681,13 +1009,14 @@ function getDiasBadgeClass($dias) {
 <script>
 $(document).ready(function() {
     var currentScript = window.location.pathname.split('/').pop();
+    var isMobile = window.innerWidth < 768;
     var table = $('#tabelaLeads').DataTable({
         "language": { "url": "//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json" },
         "order": [[0, 'asc']],
         "columnDefs": [{ "type": "num", "targets": 0 }],
         "pageLength": 100,
         "responsive": false,
-        "scrollX": true
+        "scrollX": !isMobile
     });
 
     function formatMoney(value) {
@@ -696,7 +1025,6 @@ $(document).ready(function() {
         return 'R$ ' + num.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     }
 
-    // Mapeamento de cores para as fases (incluindo as novas)
     const faseColors = {
         'Novo': 'bg-info text-dark',
         'Tentativa de Contato': 'bg-warning text-dark',
@@ -714,11 +1042,11 @@ $(document).ready(function() {
         return faseColors[fase] || 'bg-light text-dark';
     }
 
-    // ==================== Resetar dias parados ====================
+    // Resetar dias parados
     $(document).on('click', '.reset-dias-icon', function() {
         let icon = $(this);
         let id = icon.data('id');
-        let row = icon.closest('tr');
+        let row = icon.closest('tr') || icon.closest('.lead-card');
         let badgeSpan = $('#dias-parado-' + id);
         
         icon.css('pointer-events', 'none');
@@ -734,11 +1062,14 @@ $(document).ready(function() {
         }).always(() => icon.css('pointer-events', ''));
     });
 
-    // ==================== Editar valor máximo ====================
+    // Editar valor máximo
     $(document).on('click', '.valor-max-cell', function() {
-        if ($(this).closest('tr').hasClass('row-deleted')) { alert('Lead excluído.'); return; }
+        if ($(this).closest('tr')?.hasClass('row-deleted') || $(this).closest('.lead-card')?.hasClass('row-deleted')) {
+            alert('Lead excluído.');
+            return;
+        }
         $('#valorMaxLeadId').val($(this).data('id'));
-        $('#valorMaxLeadNome').val($(this).closest('tr').find('.nome-completo-cell').data('nome'));
+        $('#valorMaxLeadNome').val($(this).closest('tr')?.find('.nome-completo-cell')?.data('nome') || $(this).closest('.lead-card')?.find('.nome-completo-cell')?.data('nome') || 'Lead');
         $('#valorMaxInput').val($(this).data('valor'));
         $('#modalValorMax').modal('show');
     });
@@ -758,12 +1089,12 @@ $(document).ready(function() {
         }).always(() => btn.prop('disabled', false).html('Salvar'));
     });
 
-    // ==================== Favorito ====================
+    // Favorito
     $(document).on('click', '.favorito-star', function() {
         let icon = $(this);
         let id = icon.data('id');
         let newState = icon.hasClass('bi-star-fill') ? 0 : 1;
-        let row = icon.closest('tr');
+        let row = icon.closest('tr') || icon.closest('.lead-card');
         icon.css('pointer-events', 'none');
         $.post(currentScript, { action: 'toggle_favorito', id: id, value: newState }, function(res) {
             if (res.status === 'success') {
@@ -779,7 +1110,7 @@ $(document).ready(function() {
         }).always(() => icon.css('pointer-events', ''));
     });
 
-    // ==================== Contatar Hoje ====================
+    // Contatar Hoje
     $(document).on('change', '.toggle-contatar-hoje', function() {
         let cb = $(this);
         if (cb.prop('disabled')) return;
@@ -795,9 +1126,12 @@ $(document).ready(function() {
         });
     });
 
-    // ==================== Nome completo ====================
+    // Nome completo
     $(document).on('click', '.nome-completo-cell', function() {
-        if ($(this).closest('tr').hasClass('row-deleted')) { alert('Lead excluído.'); return; }
+        if ($(this).closest('tr')?.hasClass('row-deleted') || $(this).closest('.lead-card')?.hasClass('row-deleted')) {
+            alert('Lead excluído.');
+            return;
+        }
         $('#nomeCompletoLeadId').val($(this).data('id'));
         $('#nomeCompletoInput').val($(this).data('nome'));
         $('#modalNomeCompleto').modal('show');
@@ -819,9 +1153,12 @@ $(document).ready(function() {
         }).always(() => btn.prop('disabled', false).html('Salvar'));
     });
 
-    // ==================== Primeiro nome ====================
+    // Primeiro nome
     $(document).on('click', '.nome-cell', function() {
-        if ($(this).closest('tr').hasClass('row-deleted')) { alert('Lead excluído.'); return; }
+        if ($(this).closest('tr')?.hasClass('row-deleted') || $(this).closest('.lead-card')?.hasClass('row-deleted')) {
+            alert('Lead excluído.');
+            return;
+        }
         $('#primeiroNomeLeadId').val($(this).data('id'));
         $('#primeiroNomeInput').val($(this).data('primeiro-nome') || '');
         $('#nomeCompletoReadonly').val($(this).data('nome-completo') || '');
@@ -843,9 +1180,12 @@ $(document).ready(function() {
         }).always(() => btn.prop('disabled', false).html('Salvar'));
     });
 
-    // ==================== Obs Parceiros ====================
+    // Obs Parceiros
     $(document).on('click', '.obs-cell', function() {
-        if ($(this).closest('tr').hasClass('row-deleted')) { alert('Lead excluído.'); return; }
+        if ($(this).closest('tr')?.hasClass('row-deleted') || $(this).closest('.lead-card')?.hasClass('row-deleted')) {
+            alert('Lead excluído.');
+            return;
+        }
         $('#leadId').val($(this).data('id'));
         $('#leadNome').val($(this).data('nome'));
         $('#obsParceirosTexto').val($(this).data('obs') || '');
@@ -868,9 +1208,12 @@ $(document).ready(function() {
         }).always(() => btn.prop('disabled', false).html('Salvar'));
     });
 
-    // ==================== Observações Gerais ====================
+    // Observações Gerais
     $(document).on('click', '.observacoes-cell', function() {
-        if ($(this).closest('tr').hasClass('row-deleted')) { alert('Lead excluído.'); return; }
+        if ($(this).closest('tr')?.hasClass('row-deleted') || $(this).closest('.lead-card')?.hasClass('row-deleted')) {
+            alert('Lead excluído.');
+            return;
+        }
         $('#observacoesLeadId').val($(this).data('id'));
         $('#observacoesLeadNome').val($(this).data('nome'));
         $('#observacoesTexto').val($(this).data('obs') || '');
@@ -893,7 +1236,7 @@ $(document).ready(function() {
         }).always(() => btn.prop('disabled', false).html('Salvar'));
     });
 
-    // ==================== Toggle Compartilhar ====================
+    // Toggle Compartilhar
     $(document).on('change', '.toggle-share', function() {
         let cb = $(this);
         if (cb.prop('disabled')) return;
@@ -908,7 +1251,7 @@ $(document).ready(function() {
         });
     });
 
-    // ==================== Soft Delete e Restore ====================
+    // Soft Delete e Restore
     $(document).on('click', '.btn-soft-delete', function() {
         if (!confirm('Excluir logicamente este lead?')) return;
         let btn = $(this);
@@ -924,7 +1267,7 @@ $(document).ready(function() {
         $.post(currentScript, { action: 'restore', id: id }, res => { if (res.status === 'success') location.reload(); else alert('Erro'); });
     });
 
-    // ==================== MARCAR COMO PERDIDO ====================
+    // Marcar como Perdido
     $(document).on('click', '.btn-perdido', function() {
         let id = $(this).data('id');
         let nome = $(this).data('nome');
@@ -935,7 +1278,11 @@ $(document).ready(function() {
             if (res.status === 'success') {
                 let row = $('#row-lead-' + id);
                 row.css('background-color', '#f8d7da').fadeOut(400, function() {
-                    table.row(row).remove().draw();
+                    if ($.fn.DataTable.isDataTable('#tabelaLeads')) {
+                        table.row(row).remove().draw();
+                    } else {
+                        row.remove();
+                    }
                 });
             } else {
                 alert('Erro ao marcar lead como perdido. Tente novamente.');
@@ -947,7 +1294,7 @@ $(document).ready(function() {
         });
     });
 
-    // ==================== DUPLICAR LEAD ====================
+    // Duplicar lead
     $(document).on('click', '.btn-duplicate', function() {
         let id = $(this).data('id');
         let nome = $(this).data('nome');
@@ -968,12 +1315,15 @@ $(document).ready(function() {
         });
     });
 
-    // ==================== EDITAR TIPO DE PAGAMENTO ====================
+    // Editar tipo de pagamento
     $(document).on('click', '.tipo-pagamento-cell', function() {
-        if ($(this).closest('tr').hasClass('row-deleted')) { alert('Lead excluído.'); return; }
+        if ($(this).closest('tr')?.hasClass('row-deleted') || $(this).closest('.lead-card')?.hasClass('row-deleted')) {
+            alert('Lead excluído.');
+            return;
+        }
         let id = $(this).data('id');
         let tipo = $(this).data('tipo');
-        let nome = $(this).closest('tr').find('.nome-completo-cell').data('nome') || 'Lead';
+        let nome = $(this).closest('tr')?.find('.nome-completo-cell')?.data('nome') || $(this).closest('.lead-card')?.find('.nome-completo-cell')?.data('nome') || 'Lead';
         
         $('#tipoPagamentoLeadId').val(id);
         $('#tipoPagamentoLeadNome').val(nome);
@@ -1006,12 +1356,15 @@ $(document).ready(function() {
         });
     });
 
-    // ==================== EDITAR FASE (com suporte às novas fases) ====================
+    // Editar fase
     $(document).on('click', '.fase-cell', function() {
-        if ($(this).closest('tr').hasClass('row-deleted')) { alert('Lead excluído.'); return; }
+        if ($(this).closest('tr')?.hasClass('row-deleted') || $(this).closest('.lead-card')?.hasClass('row-deleted')) {
+            alert('Lead excluído.');
+            return;
+        }
         let id = $(this).data('id');
         let fase = $(this).data('fase');
-        let nome = $(this).closest('tr').find('.nome-completo-cell').data('nome') || 'Lead';
+        let nome = $(this).closest('tr')?.find('.nome-completo-cell')?.data('nome') || $(this).closest('.lead-card')?.find('.nome-completo-cell')?.data('nome') || 'Lead';
         
         $('#faseLeadId').val(id);
         $('#faseLeadNome').val(nome);

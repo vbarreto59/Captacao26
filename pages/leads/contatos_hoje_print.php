@@ -1,17 +1,23 @@
 <?php
-// contatos_hoje_print.php – Versão compacta para impressão (inclui valor_max, tipo_pagamento e fase_funil)
+// contatos_hoje_print.php – Versão compacta para impressão (inclui valor_max, tipo_pagamento, fase_funil e imóveis)
 session_start();
 require_once '../../includes/auth.php';
 require_once '../../conn_cap.php';
 
-// Buscar leads com contatar_hoje = 1, incluindo favorito, valor_max, tipo_pagamento e fase_funil
+// Buscar leads com contatar_hoje = 1, incluindo favorito, valor_max, tipo_pagamento, fase_funil e imóveis
 $sql = "SELECT l.id, l.nome, l.telefone, l.temperatura, l.observacoes, l.favorito,
                l.valor_max, l.tipo_pagamento, l.fase_funil,
-               COALESCE(DATEDIFF(NOW(), l.ultima_interacao), 0) as dias_parado
+               COALESCE(DATEDIFF(NOW(), l.ultima_interacao), 0) as dias_parado,
+               GROUP_CONCAT(DISTINCT i.titulo ORDER BY i.titulo ASC SEPARATOR '||') AS imoveis_titulos,
+               GROUP_CONCAT(DISTINCT i.id ORDER BY i.titulo ASC SEPARATOR ',') AS imoveis_ids
         FROM leads l
+        LEFT JOIN lead_imoveis li ON l.id = li.lead_id
+        LEFT JOIN imoveis i ON li.imovel_id = i.id AND i.deleted_at IS NULL
         WHERE l.contatar_hoje = 1
+        GROUP BY l.id
         ORDER BY l.favorito DESC, l.id DESC";
-$stmt = $conn->query($sql);
+$stmt = $conn->prepare($sql);
+$stmt->execute();
 $leads = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $temLeads = count($leads) > 0;
@@ -123,6 +129,22 @@ $temLeads = count($leads) > 0;
             color: #495057;
             margin-top: 2px;
         }
+        .imovel-badge {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-size: 7pt;
+            margin: 1px 2px 0 0;
+            white-space: nowrap;
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .imoveis-container {
+            margin-top: 4px;
+        }
         @media screen {
             body { margin: 20px; background: #f4f6f9; }
             .tabela-impressao { background: white; box-shadow: 0 0 5px rgba(0,0,0,0.1); }
@@ -135,6 +157,7 @@ $temLeads = count($leads) > 0;
             .footer { position: fixed; bottom: 0; width: 100%; }
             .valor-pagamento-cell .pagamento { background: #eee; }
             .fase-badge { background: #eee; }
+            .imovel-badge { background: #dbeafe; }
         }
     </style>
 </head>
@@ -158,7 +181,7 @@ $temLeads = count($leads) > 0;
         <thead>
             <tr>
                 <th style="width: 45px;">#</th>
-                <th style="width: 300px;">Nome / Fase</th>
+                <th style="width: 280px;">Nome / Fase / Imóveis</th>
                 <th style="width: 100px;">Valor / Pagamento</th>
                 <th>Observações (Lead)</th>
             </tr>
@@ -189,6 +212,10 @@ $temLeads = count($leads) > 0;
                 $tipo_pagamento = htmlspecialchars($lead['tipo_pagamento'] ?? '');
                 
                 $fase = htmlspecialchars($lead['fase_funil'] ?? '');
+                
+                // ====== IMÓVEIS ======
+                $imoveis_titulos = !empty($lead['imoveis_titulos']) ? explode('||', $lead['imoveis_titulos']) : [];
+                $total_imoveis = count($imoveis_titulos);
             ?>
             <tr class="<?= $classeTemp ?>">
                 <td style="text-align: center;">
@@ -199,7 +226,17 @@ $temLeads = count($leads) > 0;
                     <strong><?= $nome ?></strong><br>
                     <span style="font-size: 8pt; color: #2c3e50;">📞 <?= $telefone ?></span>
                     <?php if (!empty($fase)): ?>
-                        <br><span class="fase-badge">📌 Fase: <?= $fase ?></span>
+                        <span class="fase-badge">📌 Fase: <?= $fase ?></span>
+                    <?php endif; ?>
+                    <!-- IMÓVEIS ABAIXO DA FASE -->
+                    <?php if ($total_imoveis > 0): ?>
+                        <div class="imoveis-container">
+                            <?php foreach ($imoveis_titulos as $titulo): ?>
+                                <span class="imovel-badge">
+                                    <i style="font-style:normal;">🏠</i> <?= htmlspecialchars($titulo) ?>
+                                </span>
+                            <?php endforeach; ?>
+                        </div>
                     <?php endif; ?>
                 </td>
                 <td class="valor-pagamento-cell">

@@ -178,6 +178,7 @@ if (!defined('BASE_URL')) {
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/listagem_imoveis1.php">Invent.</a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/proprietarios/list.php">Proprietários</a>
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/imoveis/insert_json.php">Json</a>
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/imoveis_leads_interessados.php">Interessados</a>
 
                         
 
@@ -201,6 +202,8 @@ if (!defined('BASE_URL')) {
                         >
 
                         <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/lead_imovel_match.php" target="_blank">Match</a>
+
+                        <a class="nav-link-custom" href="<?= BASE_URL ?>/pages/leads/leads_interesses.php" target="_blank">Interesses</a>
 
                     </div>
                     

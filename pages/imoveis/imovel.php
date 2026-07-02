@@ -486,14 +486,7 @@ if (!empty($inclusos)) {
                     </div>
                 </div>
                 
-                <?php if(!empty($imovel['link_site'])): ?>
-                <div class="card-moderno p-3 text-center mt-3">
-                    <i class="bi bi-link-45deg"></i> Anúncio externo:
-                    <a href="<?= htmlspecialchars($imovel['link_site']) ?>" target="_blank" class="d-block text-truncate">
-                        <?= htmlspecialchars($imovel['link_site']) ?>
-                    </a>
-                </div>
-                <?php endif; ?>
+
             </div>
         </div>
     </div>
