@@ -321,9 +321,7 @@ ksort($grupos, SORT_NUMERIC);
                     <span class="id"><?= $id ?></span>
                     <span class="nome">
                         <?= $nome ?>
-                        <?php if ($dias > 0): ?>
-                            <small>(<?= $dias ?> dias)</small>
-                        <?php endif; ?>
+
                     </span>
                     <?php if ($quartos > 0): ?>
                         <span class="quartos">🏠 <?= $quartos ?> qts</span>

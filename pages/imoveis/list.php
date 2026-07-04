@@ -55,6 +55,8 @@ $preco_referencia = floatval(str_replace(',', '.', $_GET['preco_referencia'] ?? 
 $quartos = intval($_GET['quartos'] ?? 0);
 $piscina = isset($_GET['piscina']) ? 1 : 0;
 $mobiliado = isset($_GET['mobiliado']) ? 1 : 0;
+// NOVO: Filtro para incluir ou não imóveis reservados
+$incluir_reservados = isset($_GET['incluir_reservados']) ? 1 : 0;
 
 // Construção da cláusula WHERE adicional
 $where = "";
@@ -89,6 +91,11 @@ if ($piscina) {
 // Mobiliado
 if ($mobiliado) {
     $where .= " AND i.mobiliado = 1";
+}
+
+// NOVO: Filtro para imóveis reservados
+if (!$incluir_reservados) {
+    $where .= " AND (i.reservado IS NULL OR i.reservado = 0)";
 }
 
 // 1. DADOS DE APOIO
@@ -241,6 +248,7 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
         </div>
     </div>
 
+    <!-- Filtros - layout ajustado para incluir o checkbox de reservados -->
     <div class="filtros-card">
         <form method="GET" action="" class="row g-3 align-items-end">
             <div class="col-md-3">
@@ -268,18 +276,26 @@ $cpv = ($geral_visitas > 0) ? ($geral_despesas / $geral_visitas) : 0;
                     <option value="4" <?= $quartos == 4 ? 'selected' : '' ?>>4+ quartos</option>
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
                 <label class="form-label fw-bold"><i class="bi bi-water"></i> Piscina</label>
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" name="piscina" id="piscina" value="1" <?= $piscina ? 'checked' : '' ?>>
                     <label class="form-check-label" for="piscina">Sim</label>
                 </div>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
                 <label class="form-label fw-bold"><i class="bi bi-sofa"></i> Mobiliado</label>
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" name="mobiliado" id="mobiliado" value="1" <?= $mobiliado ? 'checked' : '' ?>>
                     <label class="form-check-label" for="mobiliado">Sim</label>
+                </div>
+            </div>
+            <!-- NOVO: Checkbox para exibir imóveis reservados -->
+            <div class="col-md-1">
+                <label class="form-label fw-bold"><i class="bi bi-eye"></i> Reservados</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="incluir_reservados" id="incluir_reservados" value="1" <?= $incluir_reservados ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="incluir_reservados">Exibir</label>
                 </div>
             </div>
             <div class="col-md-1">

@@ -1,26 +1,48 @@
 <?php
-// contatos_hoje_print.php – Versão compacta para impressão (inclui valor_max, tipo_pagamento, fase_funil e imóveis)
+// contatos_hoje_print.php – Versão compacta para impressão (inclui valor_max, tipo_pagamento, fase_funil, imóveis e agenda)
 session_start();
 require_once '../../includes/auth.php';
 require_once '../../conn_cap.php';
 
-// Buscar leads com contatar_hoje = 1, incluindo favorito, valor_max, tipo_pagamento, fase_funil e imóveis
+// Buscar leads com contatar_hoje = 1, incluindo favorito, valor_max, tipo_pagamento, fase_funil, imóveis e próxima agenda ativa
 $sql = "SELECT l.id, l.nome, l.telefone, l.temperatura, l.observacoes, l.favorito,
                l.valor_max, l.tipo_pagamento, l.fase_funil,
                COALESCE(DATEDIFF(NOW(), l.ultima_interacao), 0) as dias_parado,
                GROUP_CONCAT(DISTINCT i.titulo ORDER BY i.titulo ASC SEPARATOR '||') AS imoveis_titulos,
-               GROUP_CONCAT(DISTINCT i.id ORDER BY i.titulo ASC SEPARATOR ',') AS imoveis_ids
+               GROUP_CONCAT(DISTINCT i.id ORDER BY i.titulo ASC SEPARATOR ',') AS imoveis_ids,
+               (SELECT DATE_FORMAT(data_evento, '%d/%m %H:%i') 
+                FROM agenda_geral 
+                WHERE lead_id = l.id 
+                  AND data_evento >= NOW() 
+                  AND status IN ('agendado', 'confirmado', 'pendente') 
+                ORDER BY data_evento ASC LIMIT 1) AS proxima_visita
         FROM leads l
         LEFT JOIN lead_imoveis li ON l.id = li.lead_id
         LEFT JOIN imoveis i ON li.imovel_id = i.id AND i.deleted_at IS NULL
-        WHERE l.contatar_hoje = 1
-        GROUP BY l.id
-        ORDER BY l.favorito DESC, l.id DESC";
+        WHERE l.contatar_hoje = 1 and fase_funil <> 'perdido'
+        GROUP BY l.id";
+
 $stmt = $conn->prepare($sql);
 $stmt->execute();
 $leads = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// ========== ORDENAÇÃO POR TEMPERATURA ==========
+$ordemTemp = ['Quente' => 0, 'Morno' => 1, 'Frio' => 2];
+usort($leads, function($a, $b) use ($ordemTemp) {
+    $tempA = $ordemTemp[$a['temperatura'] ?? 'Morno'] ?? 1;
+    $tempB = $ordemTemp[$b['temperatura'] ?? 'Morno'] ?? 1;
+    if ($tempA != $tempB) return $tempA <=> $tempB;
+    if ($a['favorito'] != $b['favorito']) return $b['favorito'] <=> $a['favorito'];
+    return $b['id'] <=> $a['id'];
+});
+
 $temLeads = count($leads) > 0;
+
+// ========== FUNÇÃO PARA ÍCONE DE TEMPERATURA ==========
+function tempIcon($temp) {
+    $map = ['Quente' => '🔥', 'Morno' => '🌤️', 'Frio' => '❄️'];
+    return $map[$temp] ?? '🌤️';
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -103,9 +125,13 @@ $temLeads = count($leads) > 0;
         .favorito-star.inativo {
             color: #ccc;
         }
+        .temp-icon {
+            margin-left: 4px;
+            font-size: 10pt;
+        }
         .valor-pagamento-cell {
             font-size: 8pt;
-            white-space: nowrap;
+            white-space: normal;  /* permite quebra de linha */
         }
         .valor-pagamento-cell .valor {
             font-weight: 600;
@@ -119,6 +145,17 @@ $temLeads = count($leads) > 0;
             border-radius: 10px;
             font-size: 7pt;
             color: #495057;
+        }
+        .agenda-info {
+            display: block;
+            margin-top: 4px;
+            font-size: 7.5pt;
+            color: #92400e;
+            background: #fef3c7;
+            padding: 1px 6px;
+            border-radius: 10px;
+            width: fit-content;
+            font-weight: 600;
         }
         .fase-badge {
             display: inline-block;
@@ -156,6 +193,7 @@ $temLeads = count($leads) > 0;
             .obs-cell { max-width: 180px; }
             .footer { position: fixed; bottom: 0; width: 100%; }
             .valor-pagamento-cell .pagamento { background: #eee; }
+            .agenda-info { background: #fef3c7; }
             .fase-badge { background: #eee; }
             .imovel-badge { background: #dbeafe; }
         }
@@ -182,7 +220,7 @@ $temLeads = count($leads) > 0;
             <tr>
                 <th style="width: 45px;">#</th>
                 <th style="width: 280px;">Nome / Fase / Imóveis</th>
-                <th style="width: 100px;">Valor / Pagamento</th>
+                <th style="width: 130px;">Valor / Pagamento / Agenda</th>
                 <th>Observações (Lead)</th>
             </tr>
         </thead>
@@ -202,7 +240,6 @@ $temLeads = count($leads) > 0;
 
                 $nome = htmlspecialchars($lead['nome']);
                 $observacoes = htmlspecialchars($lead['observacoes'] ?? '');
-                $dias = (int)$lead['dias_parado'];
                 $favorito = (int)($lead['favorito'] ?? 0);
                 $estrela = $favorito ? '★' : '☆';
                 $classeEstrela = $favorito ? 'ativo' : 'inativo';
@@ -216,11 +253,21 @@ $temLeads = count($leads) > 0;
                 // ====== IMÓVEIS ======
                 $imoveis_titulos = !empty($lead['imoveis_titulos']) ? explode('||', $lead['imoveis_titulos']) : [];
                 $total_imoveis = count($imoveis_titulos);
+                
+                $iconTemp = tempIcon($temp);
+
+                // ====== PRÓXIMA AGENDA (tabela agenda_geral) ======
+                $proxima_agenda = $lead['proxima_visita'] ?? null;
+                $info_agenda = '';
+                if (!empty($proxima_agenda)) {
+                    $info_agenda = '📅 ' . $proxima_agenda;
+                }
             ?>
             <tr class="<?= $classeTemp ?>">
                 <td style="text-align: center;">
                     <?= $contador++ ?>
                     <span class="favorito-star <?= $classeEstrela ?>"><?= $estrela ?></span>
+                    <span class="temp-icon"><?= $iconTemp ?></span>
                 </td>
                 <td>
                     <strong><?= $nome ?></strong><br>
@@ -243,6 +290,9 @@ $temLeads = count($leads) > 0;
                     <span class="valor"><?= $valor_formatado ?></span>
                     <?php if (!empty($tipo_pagamento)): ?>
                         <span class="pagamento"><?= $tipo_pagamento ?></span>
+                    <?php endif; ?>
+                    <?php if (!empty($info_agenda)): ?>
+                        <span class="agenda-info"><?= $info_agenda ?></span>
                     <?php endif; ?>
                 </td>
                 <td class="obs-cell">
